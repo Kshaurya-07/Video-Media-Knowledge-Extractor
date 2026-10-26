@@ -1,73 +1,138 @@
 # VYORA AI — Video & Media Knowledge Extractor ⚡
 
-An intelligent, full-stack multimodal knowledge extraction platform powered by **Google Gemini 2.5 / 2.0 Flash**. Transform lectures, keynotes, meetings, technical demos, podcasts, and video tutorials into structured, actionable, and conversational knowledge assets.
+> **Tagline:** *Every Video Holds a Universe of Knowledge.*
+
+An immersive, full-stack, 3D-first multimodal video knowledge extraction platform powered by **Google Gemini 2.5 / 2.0 Flash**, **FastAPI**, **Three.js**, and **React 18 (Vite + Tailwind CSS)**.
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![React](https://img.shields.io/badge/React-18+-61DAFB?logo=react&logoColor=black)](https://react.dev)
+[![Three.js](https://img.shields.io/badge/Three.js-r183+-black?logo=three.js&logoColor=white)](https://threejs.org)
 [![Vite](https://img.shields.io/badge/Vite-6+-646CFF?logo=vite&logoColor=white)](https://vitejs.dev)
 [![Tailwind CSS](https://img.shields.io/badge/TailwindCSS-3.4+-38B2AC?logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
-[![Gemini](https://img.shields.io/badge/Google_Gemini-2.5_Flash-4285F4?logo=google&logoColor=white)](https://aistudio.google.com)
+[![Google Gemini](https://img.shields.io/badge/Google_Gemini-2.5_Flash-4285F4?logo=google&logoColor=white)](https://aistudio.google.com)
 
 ---
 
-## 🌟 Key Features
+## 🌌 Visual Identity & Design System
 
-1. **Multimodal Direct Media Ingestion**
-   - Ingests raw video (`.mp4`, `.webm`, `.mov`, `.mkv`) and audio (`.mp3`, `.wav`, `.m4a`) directly using the Google GenAI Files API.
-   - Eliminates fragile multi-model cascades (ASR + Vision OCR + LLM) by reasoning over interleaved visual and auditory streams simultaneously.
+Built on an ultra-premium, cinematic black-and-silver palette with restrained violet accents:
 
-2. **Timestamped Chapter Segmentation**
-   - Automatically detects thematic boundaries and generates chronological chapters with start/end bounds and key moments.
-   - Click any chapter to jump the player directly to that segment.
-
-3. **Synchronized, Searchable Transcript**
-   - Full dialogue transcription with speaker identification and timestamp badges.
-   - Real-time text search with instant query highlighting and one-click copy.
-
-4. **Visual Scene & On-Screen OCR Analysis**
-   - Detects technical slides, architecture diagrams, live code editors, and whiteboard formulas.
-   - Extracts on-screen text and code verbatim with precise temporal references.
-
-5. **Entity & Concept Mapping + Action Items**
-   - Extracts key entities (people, technologies, frameworks, metrics, tools) with mention frequencies and timeline tags.
-   - Identifies actionable next steps and recommendations with interactive task checkboxes.
-
-6. **Conversational Video Q&A with Clickable Citations**
-   - Ask complex questions about any moment in the video.
-   - Answers cite specific timestamps `[MM:SS]` that seek the video player to the exact explanation on click.
-
-7. **Multi-Format Knowledge Export**
-   - Export synthesized intelligence into clean Markdown (`.md`) or raw JSON (`.json`) with a single click.
+- **Primary Background:** `#050505`
+- **Secondary Background:** `#0A0A0A`
+- **Elevated Surfaces:** `#111111`
+- **Card Surfaces:** `#151515`
+- **Border Trim:** `#27272A`
+- **Primary Text:** `#FAFAFA`
+- **Secondary Text:** `#A1A1AA`
+- **Muted Text:** `#71717A`
+- **Silver Highlight:** `#D4D4D8`
+- **Subtle Violet Accent:** `#8B5CF6`
 
 ---
 
-## 🏗️ Architecture
+## 🔮 Mandatory 3D-First Experience
+
+VYORA AI features meaningful Three.js spatial elements throughout every major screen:
+
+1. **VYORA Knowledge Core (`VyoraKnowledgeCore.tsx`)**
+   - Signature sculptural, dark metallic icosahedron core with concentric gimbal orbital rings, floating concept nodes, and a quantum starfield particle swarm.
+   - Real-time pointer inertia tracking, ACESFilmic tone mapping, and automatic off-screen animation pausing.
+
+2. **3D Spatial Chapter Timeline (`SpatialTimeline3D.tsx`)**
+   - Rendered directly inside the AI Video Workspace.
+   - Visualizes video chapters as luminous orbital nodes along a 3D curved trajectory.
+   - Interactive raycasting: clicking an orb smoothly navigates the HTML5 video player to that timestamp.
+
+3. **3D Knowledge Map Topology (`KnowledgeMap3D.tsx`)**
+   - Spherical radial graph connecting video projects (central nodes) with chapter nodes and entity/concept satellite nodes.
+   - Allows users to hover to preview concepts and click to navigate directly into project workspaces.
+
+4. **3D Adaptive Processing Core (`ProcessingCore3D.tsx`)**
+   - Dynamic 3D visualization that changes its geometry, particle streams, rotation frequency, and emissive colors as the media progresses through real pipeline stages:
+     `QUEUED` ➔ `UPLOADING` ➔ `EXTRACTING_AUDIO` ➔ `TRANSCRIBING` ➔ `IDENTIFYING_CHAPTERS` ➔ `INDEXING` ➔ `FINALIZING` ➔ `COMPLETED`.
+
+---
+
+## 🖥️ Screen & Product Architecture
+
+### 1. Cinematic Landing Page
+- Minimal floating navigation bar with geometric knowledge core logo.
+- Editorial headline: *"Every Video Holds a Universe of Knowledge."*
+- Interactive 3D Knowledge Core hero with direct video stream input.
+- Feature grid, 3-step pipeline sequence, and live interactive sample preview.
+
+### 2. Authentication Experience
+- Split layout featuring Supabase Auth integration and one-click demo login.
+- Dedicated 3D spatial backdrop with ambient particles and typography.
+
+### 3. Knowledge Command Center Dashboard
+- Collapsible sidebar navigation: Overview, My Videos, AI Workspace, Saved Notes, Bookmarks, Settings.
+- Interactive 3D Knowledge Map showing topological relationships across all processed videos.
+- Video project cards with real duration, status, chapter count, open, and delete actions.
+
+### 4. Video Ingestion & Processing
+- Drag-and-drop file upload (MP4, WebM, MOV, MP3, WAV up to 500MB) and URL ingestion.
+- Live background job polling linked to the 3D Processing Core visualization.
+
+### 5. AI Video Workspace (Flagship 3-Column Experience)
+- **Left Column:** Timestamped chapters and verbatim dialogue transcript with real-time keyword filtering.
+- **Center Column:** Synchronized media player with HTTP 206 Partial Content Range streaming, **3D Spatial Chapter Timeline**, executive summary, and key takeaways.
+- **Right Column:** Source-grounded AI Chat assistant with clickable `[MM:SS]` citations, Research Notes editor with timestamp pinning, and Bookmarks.
+
+### 6. Personal Knowledge Library
+- Searchable archive of all extracted knowledge assets with toggle between Grid View and 3D Topology View.
+
+---
+
+## 🏗️ Repository Structure
 
 ```
 VYORA-AI/
 ├── backend/
 │   ├── app/
-│   │   ├── main.py                # FastAPI routes (Upload, Extract, Media Stream, Chat, Health)
-│   │   ├── config.py              # Configuration & API Key management
+│   │   ├── main.py                     # FastAPI routes & endpoints
+│   │   ├── config.py                   # Environment configuration & key resolution
+│   │   ├── database.py                 # SQLite database & demo seeding
 │   │   ├── models/
-│   │   │   └── schemas.py         # Pydantic data schemas
+│   │   │   └── schemas.py              # Pydantic schemas (Chapters, Transcripts, OCR, Q&A)
 │   │   └── services/
-│   │       ├── gemini_extractor.py# Multimodal analysis engine using Google GenAI SDK
-│   │       ├── qa_service.py      # Conversational RAG with citation generation
-│   │       └── media_service.py   # HTTP Range streaming & file management
-│   ├── samples/                   # Bundled demo media files
-│   ├── data_cache/                # Pre-computed extractions for instant preview
-│   ├── requirements.txt           # Python dependencies
-│   ├── run.py                     # Entrypoint server script
-│   └── .env.example               # Environment variables template
+│   │       ├── gemini_extractor.py     # Multimodal analysis engine via Google GenAI SDK
+│   │       ├── qa_service.py           # Grounded RAG with clickable citations
+│   │       ├── media_service.py        # HTTP Range video/audio streaming
+│   │       └── pipeline_service.py     # Background job scheduler & stage tracker
+│   ├── migrations/
+│   │   └── 001_initial_schema.sql      # Supabase PostgreSQL schema with Row Level Security (RLS)
+│   ├── samples/                        # Bundled demonstration media
+│   ├── data_cache/                     # Pre-computed extractions for instant demo
+│   ├── requirements.txt
+│   ├── run.py
+│   └── .env.example
 ├── frontend/
 │   ├── src/
-│   │   ├── components/            # Header, VideoPlayer, Uploader, Tabs, Modals
-│   │   ├── lib/                   # API client & TypeScript interfaces
-│   │   ├── App.tsx                # Master workspace layout
-│   │   └── index.css              # Custom Tailwind theme styling
+│   │   ├── components/
+│   │   │   ├── 3d/
+│   │   │   │   ├── VyoraKnowledgeCore.tsx   # Signature 3D metallic core
+│   │   │   │   ├── SpatialTimeline3D.tsx    # 3D chapter timeline for workspace
+│   │   │   │   ├── KnowledgeMap3D.tsx       # 3D connected knowledge topology
+│   │   │   │   └── ProcessingCore3D.tsx     # 3D stage-adaptive processing core
+│   │   │   ├── pages/
+│   │   │   │   ├── LandingPage.tsx          # Cinematic landing page
+│   │   │   │   ├── AuthPage.tsx             # Split-layout authentication page
+│   │   │   │   ├── DashboardPage.tsx        # Command center with 3D map
+│   │   │   │   ├── ImportPage.tsx           # Ingestion & live 3D processing
+│   │   │   │   ├── WorkspacePage.tsx        # 3-column AI Video Workspace
+│   │   │   │   └── LibraryPage.tsx          # Personal Knowledge Library
+│   │   │   ├── Header.tsx                   # Top navigation bar
+│   │   │   ├── VideoPlayer.tsx              # HTML5 player with seek control
+│   │   │   ├── SettingsModal.tsx            # API key manager
+│   │   │   └── ExportModal.tsx              # Markdown & JSON exporter
+│   │   ├── lib/
+│   │   │   ├── api.ts                       # API client with Vite proxy
+│   │   │   └── types.ts                     # TypeScript definitions
+│   │   ├── App.tsx                          # Master app layout & router
+│   │   └── index.css                        # Tailwind dark cinematic theme
 │   ├── package.json
-│   ├── vite.config.ts             # Dev server with proxy to backend
+│   ├── vite.config.ts
 │   └── tailwind.config.js
 └── README.md
 ```
@@ -89,33 +154,27 @@ VYORA-AI/
 # Navigate to the backend directory
 cd backend
 
-# Create a virtual environment
+# Create and activate virtual environment
+# Windows (PowerShell):
 python -m venv .venv
-
-# Activate the virtual environment
-# On Windows (PowerShell):
 .\.venv\Scripts\Activate.ps1
-# On Linux/macOS:
+# Linux/macOS:
+python3 -m venv .venv
 source .venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
 
-# (Optional) Set your Gemini API key in backend/.env:
-# GEMINI_API_KEY=AIzaSy...
-```
-
-Run the backend server:
-```bash
+# Start FastAPI backend
 python run.py
 ```
-*The FastAPI backend will start at `http://127.0.0.1:8000` (API documentation available at `/docs`).*
+*Backend runs on `http://127.0.0.1:8000` (Interactive API docs at `/docs`).*
 
 ---
 
 ### 2. Frontend Setup
 
-In a new terminal window:
+In a new terminal:
 
 ```bash
 # Navigate to frontend
@@ -127,47 +186,16 @@ npm install
 # Start Vite dev server
 npm run dev
 ```
-*The web application is now live at `http://localhost:5173/`.*
+*Web application runs on `http://localhost:5173/`.*
 
 ---
 
-## ⚡ Instant Demo (Zero API Key Setup Needed)
+## ⚡ Instant Demo Experience
 
-If you want to immediately experience the platform before uploading a large video or entering an API key:
-1. Open `http://localhost:5173/`.
-2. Click **"Launch Demo"** on the home screen.
-3. The platform instantly loads the bundled technical keynote: *"Architecting Real-Time Multimodal AI Systems with Gemini 2.5"*.
-4. Test clicking chapters, scrubbing through the transcript, inspecting visual OCR cards, and testing the conversational assistant!
-
----
-
-## 🔑 Configuring Your Gemini API Key
-
-You can configure your API key in two ways:
-1. **In the Web UI (Recommended):** Click **"Enter API Key"** in the top navigation bar. Enter your key, click **Verify & Connect**, and it is securely saved in your browser session.
-2. **In Environment Variables:** Create a `.env` file in the `backend/` folder:
-   ```env
-   GEMINI_API_KEY=AIzaSyYourGeminiApiKeyHere
-   GEMINI_MODEL=gemini-2.5-flash
-   ```
-
----
-
-## 📡 API Reference
-
-| Endpoint | Method | Description |
-| :--- | :--- | :--- |
-| `/api/health` | `GET` | Health check and API key readiness probe |
-| `/api/verify-key` | `POST` | Validates a Gemini API key with live model list ping |
-| `/api/upload` | `POST` | Uploads an audio/video file for analysis |
-| `/api/extract/{file_id}` | `POST` | Triggers multimodal extraction with Gemini 2.5 |
-| `/api/analysis/{file_id}` | `GET` | Retrieves cached knowledge extraction payload |
-| `/api/chat` | `POST` | Ask questions with timestamp citations |
-| `/api/media/{file_id}` | `GET, HEAD`| Streams media with HTTP 206 Partial Content (seeking) |
-| `/api/samples` | `GET` | Lists built-in sample media files |
+Open `http://localhost:5173/` and click **"Launch Interactive Demo Keynote"**. The app immediately loads the bundled keynote: *"Architecting Real-Time Multimodal AI Systems with Gemini 2.5"* without requiring an API key.
 
 ---
 
 ## 📄 License
 
-MIT License. Designed and built with ❤️ by [Kshaurya](https://github.com/Kshaurya-07).
+MIT License. Designed and built with ❤️ by [Kumar Shaurya](https://github.com/Kshaurya-07).

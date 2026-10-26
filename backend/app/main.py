@@ -1,17 +1,40 @@
 import os
 import uuid
+import json
 import shutil
+import asyncio
 from pathlib import Path
-from typing import Optional, List
-from fastapi import FastAPI, UploadFile, File, Form, Header, Request, Response, HTTPException, status
+from typing import Optional, List, Dict, Any
+from contextlib import asynccontextmanager
+
+from fastapi import (
+    FastAPI,
+    UploadFile,
+    File,
+    Form,
+    Header,
+    Request,
+    Response,
+    HTTPException,
+    status,
+    BackgroundTasks,
+    Query,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
+from pydantic import BaseModel, Field
 from google import genai
 
 from app.config import UPLOAD_DIR, SAMPLES_DIR, DATA_CACHE_DIR, get_api_key
+from app.database import init_db, seed_demo_project_if_needed, get_db
 from app.models.schemas import (
     MediaMetadata,
     MediaAnalysisResult,
+    Chapter,
+    TranscriptSegment,
+    VisualScene,
+    EntityItem,
+    ActionItem,
     ChatRequest,
     ChatResponse,
     VerifyKeyRequest,
@@ -29,14 +52,22 @@ from app.services.gemini_extractor import (
     save_cache_result,
 )
 from app.services.qa_service import answer_media_question
+from app.services.pipeline_service import process_media_background_job, ACTIVE_JOBS
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: initialize database and seed demo
+    init_db()
+    seed_demo_project_if_needed()
+    yield
 
 app = FastAPI(
     title="VYORA AI — Video & Media Knowledge Extractor API",
-    description="Multimodal knowledge extraction, chapter segmentation, OCR, and Q&A powered by Google Gemini",
-    version="1.0.0"
+    description="Multimodal knowledge extraction, chapter segmentation, OCR, 3D spatial mapping, and Q&A powered by Google Gemini",
+    version="2.0.0",
+    lifespan=lifespan,
 )
 
-# Enable CORS for local Vite dev server
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -45,13 +76,33 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ----------------- Models for New Endpoints -----------------
+class NoteCreateRequest(BaseModel):
+    title: str
+    content: str
+    timestamp_seconds: Optional[float] = None
+    timestamp_formatted: Optional[str] = None
+
+class BookmarkCreateRequest(BaseModel):
+    label: str
+    timestamp_seconds: float
+    timestamp_formatted: str
+
+class StartProcessingRequest(BaseModel):
+    file_id: Optional[str] = None
+    url: Optional[str] = None
+    title: Optional[str] = None
+    api_key: Optional[str] = None
+
+# ----------------- Health & Keys -----------------
 @app.get("/api/health")
 async def health_check():
     has_env_key = bool(get_api_key())
     return {
         "status": "healthy",
         "service": "VYORA AI Media Knowledge Extractor",
-        "has_api_key_configured": has_env_key
+        "has_api_key_configured": has_env_key,
+        "active_jobs_count": len(ACTIVE_JOBS),
     }
 
 @app.post("/api/verify-key", response_model=VerifyKeyResponse)
@@ -60,15 +111,285 @@ async def verify_api_key(req: VerifyKeyRequest):
         return VerifyKeyResponse(valid=False, message="API key is empty")
     try:
         client = genai.Client(api_key=req.api_key.strip())
-        # Try a quick ping or lightweight model query
         models_pager = client.models.list(config={"page_size": 3})
         models = list(models_pager)
-        if models:
-            return VerifyKeyResponse(valid=True, message=f"Valid Gemini API Key. Connected successfully ({len(models)} models listed).")
-        return VerifyKeyResponse(valid=True, message="Connected to Gemini API.")
+        return VerifyKeyResponse(valid=True, message=f"Connected to Gemini API ({len(models)} models available).")
     except Exception as e:
         return VerifyKeyResponse(valid=False, message=f"Verification failed: {str(e)}")
 
+# ----------------- Projects API -----------------
+@app.get("/api/projects")
+async def list_projects(user_id: str = "default_user"):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+        SELECT p.*, 
+               (SELECT COUNT(*) FROM chapters WHERE project_id = p.id) as chapter_count,
+               (SELECT COUNT(*) FROM transcript_segments WHERE project_id = p.id) as transcript_count
+        FROM projects p
+        ORDER BY p.created_at DESC
+        """)
+        rows = cursor.fetchall()
+        projects = []
+        for r in rows:
+            projects.append({
+                "id": r["id"],
+                "title": r["title"],
+                "description": r["description"],
+                "media_type": r["media_type"],
+                "filename": r["filename"],
+                "duration_seconds": r["duration_seconds"],
+                "duration_formatted": r["duration_formatted"],
+                "status": r["status"],
+                "chapter_count": r["chapter_count"],
+                "transcript_count": r["transcript_count"],
+                "created_at": r["created_at"],
+            })
+        return projects
+
+@app.get("/api/projects/{project_id}")
+async def get_project_details(project_id: str):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM projects WHERE id = ?", (project_id,))
+        proj = cursor.fetchone()
+        if not proj:
+            # Fallback to cached JSON if present
+            cached = get_cached_result(project_id)
+            if cached:
+                return cached.model_dump()
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        # Summary
+        cursor.execute("SELECT * FROM summaries WHERE project_id = ?", (project_id,))
+        summary_row = cursor.fetchone()
+        overview = summary_row["overview"] if summary_row else proj["description"] or ""
+        executive_summary = summary_row["executive_summary"] if summary_row else ""
+        key_takeaways = json.loads(summary_row["key_takeaways"]) if summary_row and summary_row["key_takeaways"] else []
+        action_items = json.loads(summary_row["action_items"]) if summary_row and summary_row["action_items"] else []
+        sentiment_and_tone = json.loads(summary_row["sentiment_and_tone"]) if summary_row and summary_row["sentiment_and_tone"] else {}
+
+        # Chapters
+        cursor.execute("SELECT * FROM chapters WHERE project_id = ? ORDER BY start_time ASC", (project_id,))
+        chapters = []
+        for c in cursor.fetchall():
+            chapters.append({
+                "start_time": c["start_time"],
+                "start_time_formatted": c["start_time_formatted"],
+                "end_time": c["end_time"],
+                "end_time_formatted": c["end_time_formatted"],
+                "title": c["title"],
+                "summary": c["summary"] or "",
+                "key_moments": json.loads(c["key_moments"]) if c["key_moments"] else [],
+            })
+
+        # Transcript
+        cursor.execute("SELECT * FROM transcript_segments WHERE project_id = ? ORDER BY start_time ASC", (project_id,))
+        transcript = []
+        for t in cursor.fetchall():
+            transcript.append({
+                "start_time": t["start_time"],
+                "start_time_formatted": t["start_time_formatted"],
+                "end_time": t["end_time"],
+                "end_time_formatted": t["end_time_formatted"],
+                "speaker": t["speaker"] or "Speaker",
+                "text": t["text"],
+            })
+
+        # Visual Scenes
+        cursor.execute("SELECT * FROM visual_scenes WHERE project_id = ? ORDER BY start_time ASC", (project_id,))
+        visual_scenes = []
+        for v in cursor.fetchall():
+            visual_scenes.append({
+                "start_time": v["start_time"],
+                "start_time_formatted": v["start_time_formatted"],
+                "end_time": v["end_time"],
+                "end_time_formatted": v["end_time_formatted"],
+                "description": v["description"],
+                "visual_elements": json.loads(v["visual_elements"]) if v["visual_elements"] else [],
+                "detected_text": json.loads(v["detected_text"]) if v["detected_text"] else [],
+            })
+
+        # Entities
+        cursor.execute("SELECT * FROM entities WHERE project_id = ?", (project_id,))
+        entities = []
+        for e in cursor.fetchall():
+            entities.append({
+                "name": e["name"],
+                "category": e["category"],
+                "description": e["description"] or "",
+                "mentions_count": e["mentions_count"] or 1,
+                "timestamps": json.loads(e["timestamps"]) if e["timestamps"] else [],
+            })
+
+        return {
+            "file_id": proj["id"],
+            "filename": proj["filename"],
+            "media_type": proj["media_type"],
+            "duration_seconds": proj["duration_seconds"],
+            "duration_formatted": proj["duration_formatted"],
+            "title": proj["title"],
+            "overview": overview,
+            "executive_summary": executive_summary,
+            "key_takeaways": key_takeaways,
+            "chapters": chapters,
+            "transcript": transcript,
+            "visual_scenes": visual_scenes,
+            "entities": entities,
+            "action_items": action_items,
+            "sentiment_and_tone": sentiment_and_tone,
+            "created_at": proj["created_at"],
+        }
+
+@app.delete("/api/projects/{project_id}")
+async def delete_project(project_id: str):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+        conn.commit()
+    return {"success": True, "message": "Project deleted successfully"}
+
+# ----------------- Transcript Search -----------------
+@app.get("/api/projects/{project_id}/search")
+async def search_transcript(project_id: str, q: str = Query(..., min_length=1)):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        search_pattern = f"%{q}%"
+        cursor.execute("""
+        SELECT * FROM transcript_segments
+        WHERE project_id = ? AND text LIKE ?
+        ORDER BY start_time ASC
+        LIMIT 50
+        """, (project_id, search_pattern))
+        results = []
+        for r in cursor.fetchall():
+            results.append({
+                "start_time": r["start_time"],
+                "start_time_formatted": r["start_time_formatted"],
+                "end_time": r["end_time"],
+                "end_time_formatted": r["end_time_formatted"],
+                "speaker": r["speaker"],
+                "text": r["text"],
+            })
+        return {"query": q, "count": len(results), "matches": results}
+
+# ----------------- User Notes -----------------
+@app.get("/api/projects/{project_id}/notes")
+async def get_notes(project_id: str):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM notes WHERE project_id = ? ORDER BY created_at DESC", (project_id,))
+        return [dict(r) for r in cursor.fetchall()]
+
+@app.post("/api/projects/{project_id}/notes")
+async def create_note(project_id: str, req: NoteCreateRequest, user_id: str = "default_user"):
+    note_id = str(uuid.uuid4())[:8]
+    ts_sec = req.timestamp_seconds or 0.0
+    ts_fmt = req.timestamp_formatted or format_seconds(ts_sec)
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+        INSERT INTO notes (id, project_id, user_id, timestamp_seconds, timestamp_formatted, title, content)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (note_id, project_id, user_id, ts_sec, ts_fmt, req.title, req.content))
+        conn.commit()
+    return {"id": note_id, "project_id": project_id, "title": req.title, "content": req.content, "timestamp_formatted": ts_fmt}
+
+@app.delete("/api/notes/{note_id}")
+async def delete_note(note_id: str):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM notes WHERE id = ?", (note_id,))
+        conn.commit()
+    return {"success": True}
+
+# ----------------- Bookmarks -----------------
+@app.get("/api/projects/{project_id}/bookmarks")
+async def get_bookmarks(project_id: str):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM bookmarks WHERE project_id = ? ORDER BY timestamp_seconds ASC", (project_id,))
+        return [dict(r) for r in cursor.fetchall()]
+
+@app.post("/api/projects/{project_id}/bookmarks")
+async def create_bookmark(project_id: str, req: BookmarkCreateRequest, user_id: str = "default_user"):
+    bm_id = str(uuid.uuid4())[:8]
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+        INSERT INTO bookmarks (id, project_id, user_id, timestamp_seconds, timestamp_formatted, label)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """, (bm_id, project_id, user_id, req.timestamp_seconds, req.timestamp_formatted, req.label))
+        conn.commit()
+    return {"id": bm_id, "project_id": project_id, "timestamp_seconds": req.timestamp_seconds, "timestamp_formatted": req.timestamp_formatted, "label": req.label}
+
+@app.delete("/api/bookmarks/{bookmark_id}")
+async def delete_bookmark(bookmark_id: str):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM bookmarks WHERE id = ?", (bookmark_id,))
+        conn.commit()
+    return {"success": True}
+
+# ----------------- 3D Knowledge Map Graph Endpoint -----------------
+@app.get("/api/knowledge-graph")
+async def get_knowledge_graph(project_id: Optional[str] = None):
+    """
+    Constructs a connected 3D graph connecting video projects, chapters, and concepts.
+    """
+    nodes = []
+    links = []
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        query = "SELECT id, title, media_type FROM projects WHERE status = 'COMPLETED'"
+        params = ()
+        if project_id:
+            query += " AND id = ?"
+            params = (project_id,)
+        cursor.execute(query, params)
+        projs = cursor.fetchall()
+
+        for p in projs:
+            pid = p["id"]
+            nodes.append({
+                "id": pid,
+                "label": p["title"],
+                "type": "video",
+                "projectId": pid,
+            })
+
+            # Fetch chapters
+            cursor.execute("SELECT id, title, start_time_formatted FROM chapters WHERE project_id = ?", (pid,))
+            for ch in cursor.fetchall():
+                chid = f"ch_{ch['id']}"
+                nodes.append({
+                    "id": chid,
+                    "label": ch["title"],
+                    "type": "chapter",
+                    "timestamp": ch["start_time_formatted"],
+                    "projectId": pid,
+                })
+                links.append({"source": pid, "target": chid})
+
+            # Fetch entities
+            cursor.execute("SELECT id, name, category, timestamps FROM entities WHERE project_id = ? LIMIT 8", (pid,))
+            for ent in cursor.fetchall():
+                entid = f"ent_{ent['id']}"
+                ts = json.loads(ent["timestamps"])[0] if ent["timestamps"] and json.loads(ent["timestamps"]) else None
+                nodes.append({
+                    "id": entid,
+                    "label": ent["name"],
+                    "type": "concept",
+                    "category": ent["category"],
+                    "timestamp": ts,
+                    "projectId": pid,
+                })
+                links.append({"source": pid, "target": entid})
+
+    return {"nodes": nodes, "links": links}
+
+# ----------------- Upload & Background Processing -----------------
 @app.post("/api/upload", response_model=MediaMetadata)
 async def upload_media(file: UploadFile = File(...)):
     file_id = str(uuid.uuid4())[:12]
@@ -79,7 +400,6 @@ async def upload_media(file: UploadFile = File(...)):
 
     save_path = UPLOAD_DIR / f"{file_id}{suffix}"
 
-    # Save uploaded file
     file_size = 0
     with open(save_path, "wb") as buffer:
         while chunk := await file.read(1024 * 1024):
@@ -89,18 +409,94 @@ async def upload_media(file: UploadFile = File(...)):
     mime_type = get_media_mime_type(save_path)
     is_video = mime_type.startswith("video/")
 
-    # Fallback duration estimate
-    estimated_duration = 180.0
+    # Create unanalyzed project record
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+        INSERT INTO projects (id, user_id, title, description, media_type, filename, file_path, duration_seconds, duration_formatted, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            file_id,
+            "default_user",
+            orig_name,
+            "Uploaded media awaiting AI knowledge extraction",
+            "video" if is_video else "audio",
+            orig_name,
+            str(save_path),
+            120.0,
+            "02:00",
+            "QUEUED"
+        ))
+        conn.commit()
 
     return MediaMetadata(
         file_id=file_id,
         filename=orig_name,
         media_type="video" if is_video else "audio",
-        duration_seconds=estimated_duration,
-        duration_formatted=format_seconds(estimated_duration),
+        duration_seconds=120.0,
+        duration_formatted="02:00",
         file_size_bytes=file_size,
     )
 
+@app.post("/api/process/start")
+async def start_processing(
+    req: StartProcessingRequest,
+    background_tasks: BackgroundTasks,
+    x_gemini_api_key: Optional[str] = Header(None)
+):
+    key = req.api_key or x_gemini_api_key or get_api_key()
+    job_id = str(uuid.uuid4())[:10]
+    
+    file_id = req.file_id
+    if not file_id:
+        if req.url:
+            file_id = "demo_presentation"  # Route demo sample or download
+        else:
+            raise HTTPException(status_code=400, detail="file_id or url is required")
+
+    # Record job in database
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+        INSERT INTO processing_jobs (job_id, project_id, stage, progress_percent, message)
+        VALUES (?, ?, ?, ?, ?)
+        """, (job_id, file_id, "QUEUED", 5.0, "Job queued in VYORA background queue..."))
+        conn.commit()
+
+    ACTIVE_JOBS[job_id] = {
+        "job_id": job_id,
+        "stage": "QUEUED",
+        "progress_percent": 5.0,
+        "message": "Job queued in VYORA background queue...",
+        "error_message": None,
+    }
+
+    # Dispatch background worker
+    media_path = get_media_path(file_id)
+    background_tasks.add_task(
+        process_media_background_job,
+        job_id=job_id,
+        project_id=file_id,
+        file_path=media_path,
+        api_key=key
+    )
+
+    return {"job_id": job_id, "project_id": file_id, "stage": "QUEUED"}
+
+@app.get("/api/jobs/{job_id}")
+async def get_job_status(job_id: str):
+    if job_id in ACTIVE_JOBS:
+        return ACTIVE_JOBS[job_id]
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM processing_jobs WHERE job_id = ?", (job_id,))
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Job not found")
+        return dict(row)
+
+# ----------------- Media Streaming & Chat -----------------
 @app.post("/api/extract/{file_id}", response_model=MediaAnalysisResult)
 async def extract_knowledge(
     file_id: str,
@@ -113,7 +509,12 @@ async def extract_knowledge(
 async def get_analysis(file_id: str):
     cached = get_cached_result(file_id)
     if not cached:
-        raise HTTPException(status_code=404, detail="No extracted knowledge found for this media ID.")
+        # Check database
+        try:
+            db_proj = await get_project_details(file_id)
+            return MediaAnalysisResult(**db_proj)
+        except Exception:
+            raise HTTPException(status_code=404, detail="No extracted knowledge found for this media ID.")
     return cached
 
 @app.post("/api/chat", response_model=ChatResponse)
@@ -128,13 +529,30 @@ async def chat_with_media(
         history=req.history,
         api_key=key
     )
+    # Save chat messages to DB
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            user_msg_id = str(uuid.uuid4())[:8]
+            ai_msg_id = str(uuid.uuid4())[:8]
+            cursor.execute("""
+            INSERT INTO chat_messages (id, project_id, user_id, role, content, citations)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """, (user_msg_id, req.file_id, "default_user", "user", req.message, "[]"))
+
+            citations_json = json.dumps([c.model_dump() for c in response.citations])
+            cursor.execute("""
+            INSERT INTO chat_messages (id, project_id, user_id, role, content, citations)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """, (ai_msg_id, req.file_id, "default_user", "assistant", response.answer, citations_json))
+            conn.commit()
+    except Exception:
+        pass
+
     return response
 
 @app.api_route("/api/media/{file_id}", methods=["GET", "HEAD"])
 async def stream_media(file_id: str, request: Request):
-    """
-    Stream media files with HTTP 206 Partial Content and HEAD request support.
-    """
     media_path = get_media_path(file_id)
     range_header = request.headers.get("range")
     

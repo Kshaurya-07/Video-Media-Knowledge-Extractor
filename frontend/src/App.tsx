@@ -1,282 +1,341 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Header } from './components/Header';
-import { MediaUploader } from './components/MediaUploader';
-import { VideoPlayer, VideoPlayerHandle } from './components/VideoPlayer';
-import { OverviewTab } from './components/OverviewTab';
-import { ChaptersTab } from './components/ChaptersTab';
-import { TranscriptTab } from './components/TranscriptTab';
-import { VisualInsightsTab } from './components/VisualInsightsTab';
-import { EntitiesTab } from './components/EntitiesTab';
-import { QAChatTab } from './components/QAChatTab';
+import React, { useState, useEffect } from 'react';
+import { LandingPage } from './components/pages/LandingPage';
+import { AuthPage } from './components/pages/AuthPage';
+import { DashboardPage } from './components/pages/DashboardPage';
+import { ImportPage } from './components/pages/ImportPage';
+import { WorkspacePage } from './components/pages/WorkspacePage';
+import { LibraryPage } from './components/pages/LibraryPage';
 import { SettingsModal } from './components/SettingsModal';
 import { ExportModal } from './components/ExportModal';
+
 import { MediaAnalysisResult } from './lib/types';
 import {
   getStoredApiKey,
+  getStoredUser,
+  setStoredUser,
   checkBackendHealth,
-  getMediaStreamUrl,
+  fetchProjectDetails,
 } from './lib/api';
+
 import {
-  FileText,
-  Bookmark,
-  MessageSquare,
-  Eye,
+  LayoutDashboard,
+  Video,
   Layers,
+  FileText,
+  Settings,
+  LogOut,
   Sparkles,
-  ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
+  Key,
+  CheckCircle,
+  AlertCircle,
+  Compass,
 } from 'lucide-react';
 
 export const App: React.FC = () => {
-  const [hasApiKey, setHasApiKey] = useState(false);
+  // Navigation & Page routing
+  const [currentPage, setCurrentPage] = useState<
+    'landing' | 'auth' | 'dashboard' | 'import' | 'workspace' | 'library'
+  >('landing');
+
+  // User session
+  const [user, setUser] = useState<{ email: string; name: string } | null>(null);
+
+  // Active Project for Workspace
+  const [activeAnalysis, setActiveAnalysis] = useState<MediaAnalysisResult | null>(null);
+
+  // Sidebar collapsed state
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
+  // Modals
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
-  const [analysis, setAnalysis] = useState<MediaAnalysisResult | null>(null);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [activeTab, setActiveTab] = useState<
-    'overview' | 'chapters' | 'transcript' | 'visuals' | 'entities' | 'qa'
-  >('overview');
+  const [hasApiKey, setHasApiKey] = useState(false);
 
-  const playerRef = useRef<VideoPlayerHandle>(null);
-
+  // Initial session & key hydration
   useEffect(() => {
-    // Initial key & health check
-    const stored = getStoredApiKey();
-    if (stored) {
+    const storedUser = getStoredUser();
+    if (storedUser) setUser(storedUser);
+
+    const storedKey = getStoredApiKey();
+    if (storedKey) {
       setHasApiKey(true);
     } else {
-      checkBackendHealth().then((health) => {
-        if (health.has_api_key_configured) {
-          setHasApiKey(true);
-        }
+      checkBackendHealth().then((h) => {
+        if (h.has_api_key_configured) setHasApiKey(true);
       });
     }
   }, []);
 
-  const handleSeek = (seconds: number) => {
-    if (playerRef.current) {
-      playerRef.current.seekTo(seconds);
+  const handleOpenProject = async (projectId: string) => {
+    try {
+      const proj = await fetchProjectDetails(projectId);
+      setActiveAnalysis(proj);
+      setCurrentPage('workspace');
+    } catch (err) {
+      console.error('Failed to open project:', err);
     }
   };
 
-  const handleReset = () => {
-    setAnalysis(null);
-    setCurrentTime(0);
-    setActiveTab('overview');
+  const handleLaunchDemo = async () => {
+    await handleOpenProject('demo_presentation');
+  };
+
+  const handleSignOut = () => {
+    setStoredUser(null);
+    setUser(null);
+    setCurrentPage('landing');
   };
 
   return (
-    <div className="min-h-screen bg-[#080c14] text-slate-100 flex flex-col font-sans selection:bg-indigo-500/30 selection:text-indigo-200">
-      {/* Top Header */}
-      <Header
-        hasKey={hasApiKey}
-        onOpenSettings={() => setIsSettingsOpen(true)}
-        onOpenExport={() => setIsExportOpen(true)}
-        hasAnalysis={!!analysis}
-        mediaTitle={analysis?.title}
-      />
-
-      {/* Main Workspace Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
-        {!analysis ? (
-          <MediaUploader
-            onAnalysisComplete={(res) => setAnalysis(res)}
-            onOpenSettings={() => setIsSettingsOpen(true)}
-            hasApiKey={hasApiKey}
-          />
-        ) : (
-          <div className="space-y-6">
-            {/* Top Bar Navigation */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-2 border-b border-slate-800">
-              <button
-                onClick={handleReset}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-800 text-xs font-medium text-slate-300 transition-colors"
+    <div className="min-h-screen bg-[#050505] text-[#FAFAFA] flex flex-col font-sans selection:bg-violet-500/30 selection:text-violet-200">
+      {/* 1. If on Landing or Auth, render full-screen immersive view */}
+      {currentPage === 'landing' ? (
+        <LandingPage
+          onGetStarted={() => setCurrentPage(user ? 'dashboard' : 'dashboard')}
+          onLaunchDemo={handleLaunchDemo}
+          onSignIn={() => setCurrentPage('auth')}
+          onImportUrl={() => {
+            setCurrentPage('import');
+          }}
+        />
+      ) : currentPage === 'auth' ? (
+        <AuthPage
+          onSuccess={(u) => {
+            setUser(u);
+            setCurrentPage('dashboard');
+          }}
+          onCancel={() => setCurrentPage('landing')}
+        />
+      ) : (
+        /* 2. Main Authenticated Application Layout with Collapsible Sidebar */
+        <div className="flex-1 flex overflow-hidden min-h-screen">
+          {/* Collapsible Sidebar */}
+          <aside
+            className={`transition-all duration-300 bg-[#0A0A0A] border-r border-[#27272A] flex flex-col justify-between shrink-0 z-30 ${
+              isSidebarCollapsed ? 'w-20' : 'w-64'
+            }`}
+          >
+            {/* Top Logo & Toggle */}
+            <div className="p-4 border-b border-[#27272A] flex items-center justify-between">
+              <div
+                className="flex items-center gap-3 cursor-pointer overflow-hidden"
+                onClick={() => setCurrentPage('landing')}
               >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Analyze Another Media</span>
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-zinc-800 to-black border border-zinc-700 flex items-center justify-center shrink-0">
+                  <div className="w-3.5 h-3.5 rounded-full border border-violet-400 flex items-center justify-center">
+                    <div className="w-1 h-1 rounded-full bg-white" />
+                  </div>
+                </div>
+                {!isSidebarCollapsed && (
+                  <span className="font-bold text-sm tracking-tight text-white whitespace-nowrap">
+                    VYORA<span className="text-violet-400">.AI</span>
+                  </span>
+                )}
+              </div>
+
+              <button
+                onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                className="p-1.5 rounded-lg text-[#71717A] hover:text-white hover:bg-[#151515] transition-colors"
+                title={isSidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
+              >
+                {isSidebarCollapsed ? (
+                  <ChevronRight className="w-4 h-4" />
+                ) : (
+                  <ChevronLeft className="w-4 h-4" />
+                )}
+              </button>
+            </div>
+
+            {/* Navigation Links */}
+            <div className="p-3 space-y-1.5 flex-1">
+              <button
+                onClick={() => setCurrentPage('dashboard')}
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                  currentPage === 'dashboard'
+                    ? 'bg-white text-black shadow-md'
+                    : 'text-[#A1A1AA] hover:text-white hover:bg-[#111111]'
+                }`}
+                title="Overview"
+              >
+                <LayoutDashboard className="w-4 h-4 shrink-0" />
+                {!isSidebarCollapsed && <span>Overview</span>}
               </button>
 
-              <div className="flex items-center gap-2 text-xs text-slate-400">
-                <span className="font-mono text-slate-300">{analysis.filename}</span>
-                <span>•</span>
-                <span className="capitalize">{analysis.media_type}</span>
-                <span>•</span>
-                <span className="font-mono text-indigo-400">{analysis.duration_formatted}</span>
-              </div>
+              <button
+                onClick={() => setCurrentPage('import')}
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                  currentPage === 'import'
+                    ? 'bg-white text-black shadow-md'
+                    : 'text-[#A1A1AA] hover:text-white hover:bg-[#111111]'
+                }`}
+                title="Import Media"
+              >
+                <Video className="w-4 h-4 shrink-0" />
+                {!isSidebarCollapsed && <span>Import Video</span>}
+              </button>
+
+              <button
+                onClick={() => {
+                  if (activeAnalysis) {
+                    setCurrentPage('workspace');
+                  } else {
+                    handleLaunchDemo();
+                  }
+                }}
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                  currentPage === 'workspace'
+                    ? 'bg-white text-black shadow-md'
+                    : 'text-[#A1A1AA] hover:text-white hover:bg-[#111111]'
+                }`}
+                title="AI Workspace"
+              >
+                <Sparkles className="w-4 h-4 shrink-0 text-violet-400" />
+                {!isSidebarCollapsed && <span>AI Workspace</span>}
+              </button>
+
+              <button
+                onClick={() => setCurrentPage('library')}
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                  currentPage === 'library'
+                    ? 'bg-white text-black shadow-md'
+                    : 'text-[#A1A1AA] hover:text-white hover:bg-[#111111]'
+                }`}
+                title="Knowledge Library"
+              >
+                <Layers className="w-4 h-4 shrink-0" />
+                {!isSidebarCollapsed && <span>Knowledge Library</span>}
+              </button>
             </div>
 
-            {/* Split Grid: Left Video Player & Right Knowledge Panel */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-              {/* Left Column: Player & Quick Info (5 cols) */}
-              <div className="lg:col-span-5 lg:sticky lg:top-20 space-y-4">
-                <VideoPlayer
-                  ref={playerRef}
-                  src={getMediaStreamUrl(analysis.file_id)}
-                  mediaType={analysis.media_type}
-                  title={analysis.title}
-                  onTimeUpdate={(t) => setCurrentTime(t)}
+            {/* Sidebar Bottom Controls */}
+            <div className="p-3 border-t border-[#27272A] space-y-1.5">
+              <button
+                onClick={() => setIsSettingsOpen(true)}
+                className="w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-medium text-[#A1A1AA] hover:text-white hover:bg-[#111111] transition-colors"
+                title="Settings & API Key"
+              >
+                <Settings className="w-4 h-4 shrink-0" />
+                {!isSidebarCollapsed && <span>Settings</span>}
+              </button>
+
+              <button
+                onClick={() => setCurrentPage('landing')}
+                className="w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-medium text-[#A1A1AA] hover:text-white hover:bg-[#111111] transition-colors"
+                title="Landing Page"
+              >
+                <Compass className="w-4 h-4 shrink-0" />
+                {!isSidebarCollapsed && <span>Landing Portal</span>}
+              </button>
+
+              <button
+                onClick={handleSignOut}
+                className="w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-medium text-[#71717A] hover:text-red-400 hover:bg-[#111111] transition-colors"
+                title="Sign Out"
+              >
+                <LogOut className="w-4 h-4 shrink-0" />
+                {!isSidebarCollapsed && <span>Sign Out</span>}
+              </button>
+            </div>
+          </aside>
+
+          {/* Main App Canvas */}
+          <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
+            {/* Top Workspace Header Bar */}
+            <header className="px-6 py-3.5 border-b border-[#27272A] bg-[#050505]/80 backdrop-blur-md sticky top-0 z-20 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-mono uppercase tracking-wider text-[#A1A1AA]">
+                  VYORA AI •{' '}
+                  <span className="text-white capitalize">{currentPage}</span>
+                </span>
+              </div>
+
+              <div className="flex items-center gap-3">
+                {activeAnalysis && currentPage === 'workspace' && (
+                  <button
+                    onClick={() => setIsExportOpen(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#111111] hover:bg-[#151515] border border-[#27272A] text-xs font-medium text-white transition-colors"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-violet-400" />
+                    <span>Export</span>
+                  </button>
+                )}
+
+                {/* API Key Status Pill */}
+                <button
+                  onClick={() => setIsSettingsOpen(true)}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-mono transition-all ${
+                    hasApiKey
+                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                      : 'bg-amber-500/10 border-amber-500/30 text-amber-300 animate-pulse'
+                  }`}
+                >
+                  <Key className="w-3 h-3" />
+                  <span>{hasApiKey ? 'Gemini 2.5 Active' : 'Enter API Key'}</span>
+                  {hasApiKey ? (
+                    <CheckCircle className="w-3 h-3 text-emerald-400" />
+                  ) : (
+                    <AlertCircle className="w-3 h-3 text-amber-400" />
+                  )}
+                </button>
+              </div>
+            </header>
+
+            {/* Page Content View Router */}
+            <main className="flex-1 p-6 max-w-7xl w-full mx-auto">
+              {currentPage === 'dashboard' && (
+                <DashboardPage
+                  onOpenProject={handleOpenProject}
+                  onNavigateToImport={() => setCurrentPage('import')}
+                  onOpenSettings={() => setIsSettingsOpen(true)}
+                  userName={user?.name || 'Researcher'}
                 />
+              )}
 
-                {/* Media Title Card */}
-                <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-4 space-y-2">
-                  <h2 className="text-base font-bold text-slate-100 leading-snug">
-                    {analysis.title}
-                  </h2>
-                  <p className="text-xs text-slate-400 line-clamp-3">
-                    {analysis.overview}
-                  </p>
-                </div>
-              </div>
+              {currentPage === 'import' && (
+                <ImportPage
+                  onProcessingFinished={(id) => handleOpenProject(id)}
+                  onOpenSettings={() => setIsSettingsOpen(true)}
+                />
+              )}
 
-              {/* Right Column: Tabbed Knowledge Engine (7 cols) */}
-              <div className="lg:col-span-7 bg-slate-950/40 border border-slate-800/80 rounded-3xl p-5 shadow-2xl space-y-5">
-                {/* Modern Navigation Tabs */}
-                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-slate-800/80">
-                  <button
-                    onClick={() => setActiveTab('overview')}
-                    className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
-                      activeTab === 'overview'
-                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
-                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-                    }`}
-                  >
-                    <FileText className="w-3.5 h-3.5" />
-                    <span>Overview</span>
-                  </button>
+              {currentPage === 'workspace' && activeAnalysis && (
+                <WorkspacePage
+                  analysis={activeAnalysis}
+                  onBack={() => setCurrentPage('dashboard')}
+                  onOpenSettings={() => setIsSettingsOpen(true)}
+                  hasApiKey={hasApiKey}
+                />
+              )}
 
-                  <button
-                    onClick={() => setActiveTab('chapters')}
-                    className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
-                      activeTab === 'chapters'
-                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
-                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-                    }`}
-                  >
-                    <Bookmark className="w-3.5 h-3.5" />
-                    <span>Chapters</span>
-                    <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-800 font-mono">
-                      {analysis.chapters.length}
-                    </span>
-                  </button>
-
-                  <button
-                    onClick={() => setActiveTab('transcript')}
-                    className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
-                      activeTab === 'transcript'
-                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
-                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-                    }`}
-                  >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>Transcript</span>
-                  </button>
-
-                  <button
-                    onClick={() => setActiveTab('visuals')}
-                    className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
-                      activeTab === 'visuals'
-                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
-                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-                    }`}
-                  >
-                    <Eye className="w-3.5 h-3.5" />
-                    <span>Visuals & OCR</span>
-                  </button>
-
-                  <button
-                    onClick={() => setActiveTab('entities')}
-                    className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
-                      activeTab === 'entities'
-                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
-                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-                    }`}
-                  >
-                    <Layers className="w-3.5 h-3.5" />
-                    <span>Entities</span>
-                  </button>
-
-                  <button
-                    onClick={() => setActiveTab('qa')}
-                    className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
-                      activeTab === 'qa'
-                        ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-600/30'
-                        : 'text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10'
-                    }`}
-                  >
-                    <MessageSquare className="w-3.5 h-3.5" />
-                    <span>Q&A Chat</span>
-                  </button>
-                </div>
-
-                {/* Tab Content Panes */}
-                <div className="pt-2">
-                  {activeTab === 'overview' && (
-                    <OverviewTab analysis={analysis} onSeek={handleSeek} />
-                  )}
-                  {activeTab === 'chapters' && (
-                    <ChaptersTab
-                      chapters={analysis.chapters}
-                      currentTime={currentTime}
-                      onSeek={handleSeek}
-                    />
-                  )}
-                  {activeTab === 'transcript' && (
-                    <TranscriptTab
-                      transcript={analysis.transcript}
-                      currentTime={currentTime}
-                      onSeek={handleSeek}
-                    />
-                  )}
-                  {activeTab === 'visuals' && (
-                    <VisualInsightsTab
-                      scenes={analysis.visual_scenes}
-                      currentTime={currentTime}
-                      onSeek={handleSeek}
-                    />
-                  )}
-                  {activeTab === 'entities' && (
-                    <EntitiesTab
-                      entities={analysis.entities}
-                      actionItems={analysis.action_items}
-                      onSeek={handleSeek}
-                    />
-                  )}
-                  {activeTab === 'qa' && (
-                    <QAChatTab
-                      fileId={analysis.file_id}
-                      onSeek={handleSeek}
-                      hasApiKey={hasApiKey}
-                      onOpenSettings={() => setIsSettingsOpen(true)}
-                    />
-                  )}
-                </div>
-              </div>
-            </div>
+              {currentPage === 'library' && (
+                <LibraryPage
+                  onOpenProject={handleOpenProject}
+                  onNavigateToImport={() => setCurrentPage('import')}
+                />
+              )}
+            </main>
           </div>
-        )}
-      </main>
+        </div>
+      )}
 
-      {/* Footer */}
-      <footer className="border-t border-slate-900 bg-slate-950/60 py-4 px-6 text-center text-xs text-slate-500">
-        <p>VYORA AI — Video & Media Knowledge Extractor • Built with Gemini 2.5, FastAPI & React</p>
-      </footer>
-
-      {/* Modals */}
+      {/* Global Modals */}
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
-        onKeySaved={() => {
-          setHasApiKey(true);
-        }}
+        onKeySaved={() => setHasApiKey(true)}
       />
 
-      {analysis && (
+      {activeAnalysis && (
         <ExportModal
           isOpen={isExportOpen}
           onClose={() => setIsExportOpen(false)}
-          analysis={analysis}
+          analysis={activeAnalysis}
         />
       )}
     </div>
   );
 };
+
 export default App;
