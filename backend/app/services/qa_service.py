@@ -8,6 +8,11 @@ from fastapi import HTTPException
 logger = logging.getLogger("vyora.qa")
 
 from app.config import DEFAULT_MODEL, get_api_key
+from app.services.model_discovery_service import (
+    get_active_model_selection,
+    blacklist_failed_model,
+    format_model_display_name,
+)
 from app.models.schemas import ChatMessage, ChatResponse, TimestampCitation
 from app.services.gemini_extractor import (
     get_cached_result,
@@ -107,19 +112,62 @@ Conversation History:
     user_prompt += f"\nUser Question: {question}\n\nAnswer in the requested JSON format."
     contents.append(user_prompt)
 
-    logger.info(f"[VYORA AI] Running grounded Q&A inference with model='{DEFAULT_MODEL}' for file_id={file_id}")
+    # Determine active model (prefer model used during extraction if available)
+    active_model = getattr(cached_analysis, "selected_model", None) if cached_analysis else None
+    if not active_model:
+        active_model, _, _ = get_active_model_selection(resolved_key)
+
+    max_fallbacks = 3
+    fallback_attempts = 0
+    response = None
+
+    while True:
+        logger.info(f"[VYORA AI] Running grounded Q&A inference with model='{active_model}' for file_id={file_id}")
+        try:
+            response = client.models.generate_content(
+                model=active_model,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    system_instruction=QA_SYSTEM_PROMPT,
+                    response_mime_type="application/json",
+                    temperature=0.2,
+                )
+            )
+            break
+        except Exception as e:
+            clean_err = sanitize_error_message(e)
+            err_lower = clean_err.lower()
+
+            if "401" in clean_err or "api_key_invalid" in err_lower or "unauthenticated" in err_lower:
+                raise map_gemini_error(e, action="Q&A generation", model_name=active_model)
+            if "403" in clean_err or "permission_denied" in err_lower:
+                raise map_gemini_error(e, action="Q&A generation", model_name=active_model)
+
+            is_model_unavailable = (
+                "404" in clean_err or
+                "not_found" in err_lower or
+                "no longer available" in err_lower or
+                "not found" in err_lower
+            )
+
+            if is_model_unavailable and fallback_attempts < max_fallbacks:
+                fallback_attempts += 1
+                next_model = blacklist_failed_model(active_model, api_key=resolved_key, reason=clean_err)
+                if next_model and next_model != active_model:
+                    logger.warning(f"[VYORA AI] Q&A Model '{active_model}' unavailable. Falling back to '{next_model}'")
+                    active_model = next_model
+                    continue
+
+            if ("429" in clean_err or "503" in clean_err) and fallback_attempts < 2:
+                fallback_attempts += 1
+                backoff = 2.0 * fallback_attempts
+                logger.warning(f"[VYORA AI] Q&A transient error ({clean_err}). Retrying in {backoff}s...")
+                time.sleep(backoff)
+                continue
+
+            raise map_gemini_error(e, action="Q&A generation", model_name=active_model)
 
     try:
-        response = client.models.generate_content(
-            model=DEFAULT_MODEL,
-            contents=contents,
-            config=types.GenerateContentConfig(
-                system_instruction=QA_SYSTEM_PROMPT,
-                response_mime_type="application/json",
-                temperature=0.2,
-            )
-        )
-
         resp_text = get_response_text(response)
         clean_text = clean_json_text(resp_text)
         data = json.loads(clean_text)
@@ -134,4 +182,4 @@ Conversation History:
     except HTTPException:
         raise
     except Exception as e:
-        raise map_gemini_error(e, action="Q&A generation")
+        raise map_gemini_error(e, action="Q&A generation", model_name=active_model)

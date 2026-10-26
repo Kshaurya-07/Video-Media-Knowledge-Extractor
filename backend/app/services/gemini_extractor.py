@@ -13,6 +13,11 @@ from google.genai import types
 from fastapi import HTTPException
 
 from app.config import DEFAULT_MODEL, DATA_CACHE_DIR, get_api_key
+from app.services.model_discovery_service import (
+    get_active_model_selection,
+    blacklist_failed_model,
+    format_model_display_name,
+)
 from app.models.schemas import (
     MediaAnalysisResult,
     Chapter,
@@ -103,15 +108,16 @@ def sanitize_error_message(err: Exception) -> str:
     msg = re.sub(r'AIzaSy[0-9A-Za-z_-]{33}', '[REDACTED_API_KEY]', msg)
     return msg
 
-def map_gemini_error(e: Exception, action: str = "Extraction") -> HTTPException:
+def map_gemini_error(e: Exception, action: str = "Extraction", model_name: Optional[str] = None) -> HTTPException:
     """Map Google Gemini API exceptions into clear, structured HTTPExceptions with safe messages."""
     clean_err = sanitize_error_message(e)
     err_lower = clean_err.lower()
+    target_model = model_name or DEFAULT_MODEL
 
     if "404" in clean_err or "not_found" in err_lower or "no longer available" in err_lower or "not found" in err_lower:
         return HTTPException(
             status_code=404,
-            detail=f"{action} failed: Configured model '{DEFAULT_MODEL}' is not found or unavailable to your project. Please update GEMINI_MODEL. (Error: {clean_err})"
+            detail=f"{action} failed: Model '{target_model}' is not found or unavailable to your project. Please verify GEMINI_MODEL or allow automatic selection. (Error: {clean_err})"
         )
     if "401" in clean_err or "api_key_invalid" in err_lower or "api key not valid" in err_lower or "unauthenticated" in err_lower or "invalid api key" in err_lower:
         return HTTPException(
@@ -121,7 +127,7 @@ def map_gemini_error(e: Exception, action: str = "Extraction") -> HTTPException:
     if "403" in clean_err or "permission_denied" in err_lower or "forbidden" in err_lower:
         return HTTPException(
             status_code=403,
-            detail=f"Gemini API permission denied for model '{DEFAULT_MODEL}'. Please check project permissions and billing status."
+            detail=f"Gemini API permission denied for model '{target_model}'. Please check project permissions and billing status."
         )
     if "429" in clean_err or "resource_exhausted" in err_lower or "quota" in err_lower or "rate limit" in err_lower:
         return HTTPException(
@@ -168,7 +174,8 @@ def save_cache_result(result: MediaAnalysisResult):
 async def extract_media_knowledge(
     file_id: str,
     api_key: Optional[str] = None,
-    on_stage: Optional[Callable[[str, float, str], None]] = None
+    on_stage: Optional[Callable[[str, float, str], None]] = None,
+    selected_model_override: Optional[str] = None,
 ) -> MediaAnalysisResult:
     # 1. Check cache first
     cached = get_cached_result(file_id)
@@ -250,28 +257,81 @@ async def extract_media_knowledge(
     except Exception as e:
         raise map_gemini_error(e, action="Media upload")
 
-    # 6. Extract knowledge using Gemini Multimodal Model
-    if on_stage:
-        on_stage("IDENTIFYING_CHAPTERS", 70.0, "Synthesizing chapters, OCR text, and conceptual entities...")
+    # 6. Resolve Model (Automatic Discovery or Configured)
+    active_model = selected_model_override
+    selection_mode = "automatic"
+    if not active_model:
+        active_model, selection_mode, _ = get_active_model_selection(resolved_key)
+
+    prompt = (
+        f"Analyze this {'video' if is_video else 'audio'} file named '{media_path.name}'. "
+        "Extract complete knowledge according to the system prompt instructions."
+    )
+
+    max_fallbacks = 3
+    fallback_attempts = 0
+    fallback_history = []
+    response = None
+
+    while True:
+        logger.info(f"[VYORA AI] Running multimodal extraction inference with model='{active_model}' for media={media_path.name} (file_id={file_id})")
+        if on_stage:
+            disp_name = format_model_display_name(active_model)
+            on_stage("IDENTIFYING_CHAPTERS", 70.0, f"Synthesizing chapters & knowledge using {disp_name}...")
+
+        try:
+            response = client.models.generate_content(
+                model=active_model,
+                contents=[uploaded_file, prompt],
+                config=types.GenerateContentConfig(
+                    system_instruction=EXTRACTION_SYSTEM_PROMPT,
+                    response_mime_type="application/json",
+                    temperature=0.2,
+                )
+            )
+            break
+        except Exception as e:
+            clean_err = sanitize_error_message(e)
+            err_lower = clean_err.lower()
+
+            # 401 unauthenticated or 403 permission denied across project - do not swap models
+            if "401" in clean_err or "api_key_invalid" in err_lower or "unauthenticated" in err_lower:
+                raise map_gemini_error(e, action="Extraction", model_name=active_model)
+            if "403" in clean_err or "permission_denied" in err_lower:
+                raise map_gemini_error(e, action="Extraction", model_name=active_model)
+
+            # Model unavailable/deprecated/not found -> Fallback
+            is_model_unavailable = (
+                "404" in clean_err or
+                "not_found" in err_lower or
+                "no longer available" in err_lower or
+                "not found" in err_lower or
+                "unsupported model" in err_lower
+            )
+
+            if is_model_unavailable and fallback_attempts < max_fallbacks:
+                fallback_attempts += 1
+                next_model = blacklist_failed_model(active_model, api_key=resolved_key, reason=clean_err)
+                if next_model and next_model != active_model:
+                    fallback_history.append({"from": active_model, "to": next_model, "reason": clean_err})
+                    logger.warning(f"[VYORA AI] Model '{active_model}' unavailable ({clean_err}). Falling back to '{next_model}' (fallback {fallback_attempts}/{max_fallbacks})")
+                    if on_stage:
+                        on_stage("IDENTIFYING_CHAPTERS", 72.0, f"Recovering with fallback model '{format_model_display_name(next_model)}'...")
+                    active_model = next_model
+                    selection_mode = "fallback"
+                    continue
+
+            # Transient rate limit or 503
+            if ("429" in clean_err or "503" in clean_err or "resource_exhausted" in err_lower) and fallback_attempts < 2:
+                fallback_attempts += 1
+                backoff = 2.0 * fallback_attempts
+                logger.warning(f"[VYORA AI] Transient error from Gemini ({clean_err}). Retrying in {backoff}s...")
+                time.sleep(backoff)
+                continue
+
+            raise map_gemini_error(e, action="Extraction", model_name=active_model)
 
     try:
-        prompt = (
-            f"Analyze this {'video' if is_video else 'audio'} file named '{media_path.name}'. "
-            "Extract complete knowledge according to the system prompt instructions."
-        )
-
-        logger.info(f"[VYORA AI] Running multimodal extraction inference with model='{DEFAULT_MODEL}' for media={media_path.name} (file_id={file_id})")
-
-        response = client.models.generate_content(
-            model=DEFAULT_MODEL,
-            contents=[uploaded_file, prompt],
-            config=types.GenerateContentConfig(
-                system_instruction=EXTRACTION_SYSTEM_PROMPT,
-                response_mime_type="application/json",
-                temperature=0.2,
-            )
-        )
-
         resp_text = get_response_text(response)
         if not resp_text:
             raise HTTPException(status_code=500, detail="Gemini returned an empty response.")
@@ -284,6 +344,8 @@ async def extract_media_knowledge(
         data["filename"] = media_path.name
         data["media_type"] = "video" if is_video else "audio"
         data["created_at"] = datetime.now().isoformat()
+        data["selected_model"] = active_model
+        data["model_selection_mode"] = selection_mode
         
         if "duration_seconds" not in data or not data["duration_seconds"]:
             data["duration_seconds"] = 120.0
@@ -315,4 +377,4 @@ async def extract_media_knowledge(
     except HTTPException:
         raise
     except Exception as e:
-        raise map_gemini_error(e, action="Extraction")
+        raise map_gemini_error(e, action="Extraction", model_name=active_model)

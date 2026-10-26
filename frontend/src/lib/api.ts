@@ -115,13 +115,25 @@ export async function fetchSystemConfig(): Promise<SystemConfig> {
   };
 }
 
+export interface CandidateModelInfo {
+  model_id: string;
+  display_name: string;
+  tier_score: number;
+  input_token_limit?: number;
+}
+
 export interface ModelStatusResponse {
   provider: string;
+  selection_mode?: 'automatic' | 'preferred_override' | 'fallback';
+  selected_model?: string;
   configured_model: string;
   display_model: string;
-  status: 'connected' | 'configured' | 'pending_key' | 'offline' | 'error';
+  status: 'connected' | 'configured' | 'pending_key' | 'offline' | 'error' | 'no_compatible_model';
   has_api_key: boolean;
   model_verified: boolean;
+  last_checked?: string;
+  compatible_models_count?: number;
+  candidate_models?: CandidateModelInfo[];
   message?: string;
 }
 
@@ -148,11 +160,14 @@ export async function fetchModelStatus(): Promise<ModelStatusResponse> {
       const data = await res.json();
       return {
         provider: data.provider || 'Google Gemini',
+        selection_mode: data.selection_mode || 'automatic',
+        selected_model: data.selected_model || data.configured_model || 'gemini-3.8-flash',
         configured_model: data.configured_model || 'gemini-3.8-flash',
         display_model: data.display_model || formatModelDisplay(data.configured_model),
         status: data.status === 'configured' ? 'configured' : 'pending_key',
         has_api_key: Boolean(data.has_api_key_configured),
         model_verified: true,
+        compatible_models_count: data.compatible_models_count || 1,
       };
     }
   } catch {
@@ -161,6 +176,8 @@ export async function fetchModelStatus(): Promise<ModelStatusResponse> {
 
   return {
     provider: 'Google Gemini',
+    selection_mode: 'automatic',
+    selected_model: 'gemini-3.8-flash',
     configured_model: 'gemini-3.8-flash',
     display_model: 'Gemini 3.8 Flash',
     status: 'offline',
@@ -168,6 +185,23 @@ export async function fetchModelStatus(): Promise<ModelStatusResponse> {
     model_verified: false,
     message: 'Backend service unreachable',
   };
+}
+
+export async function refreshModelCache(): Promise<ModelStatusResponse> {
+  const customKey = getStoredApiKey();
+  const headers: Record<string, string> = {};
+  if (customKey) {
+    headers['X-Gemini-Api-Key'] = customKey;
+  }
+
+  const res = await fetch(`${API_BASE}/system/model-cache/refresh`, {
+    method: 'POST',
+    headers,
+  });
+  if (!res.ok) {
+    throw new Error('Failed to refresh model discovery cache');
+  }
+  return res.json();
 }
 
 export async function checkBackendHealth(): Promise<{

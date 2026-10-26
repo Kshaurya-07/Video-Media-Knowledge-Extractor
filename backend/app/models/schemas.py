@@ -65,6 +65,8 @@ class MediaAnalysisResult(BaseModel):
     action_items: List[ActionItem]
     sentiment_and_tone: Dict[str, Any] = Field(default_factory=dict)
     created_at: str
+    selected_model: Optional[str] = Field(None, description="Gemini model selected for analysis")
+    model_selection_mode: Optional[str] = Field("automatic", description="Model selection mode (automatic or preferred_override)")
 
 class ChatMessage(BaseModel):
     role: str  # 'user' or 'assistant'

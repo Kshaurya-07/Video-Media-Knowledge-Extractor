@@ -53,6 +53,12 @@ from app.services.gemini_extractor import (
     sanitize_error_message,
 )
 from app.services.qa_service import answer_media_question
+from app.services.model_discovery_service import (
+    get_model_status_payload,
+    get_active_model_selection,
+    invalidate_model_cache,
+    format_model_display_name,
+)
 from app.services.pipeline_service import (
     process_media_background_job,
     get_active_job_for_project,
@@ -106,69 +112,40 @@ class StartProcessingRequest(BaseModel):
 # ----------------- Health & Configuration -----------------
 @app.get("/api/system/model-status")
 async def get_system_model_status(x_gemini_api_key: Optional[str] = Header(None)):
-    api_key = get_api_key(x_gemini_api_key)
-    has_key = bool(api_key and api_key.strip())
-    
-    status = "pending_key"
-    is_verified = False
-    verification_message = "No Gemini API key configured. Provide an API key in Settings."
+    return get_model_status_payload(api_key=x_gemini_api_key)
 
-    if has_key:
-        status = "configured"
-        verification_message = f"Model '{DEFAULT_MODEL}' configured with API key."
-        try:
-            client = genai.Client(api_key=api_key.strip())
-            client.models.get(model=DEFAULT_MODEL)
-            is_verified = True
-            status = "connected"
-            verification_message = f"Model '{DEFAULT_MODEL}' is active, available, and connected."
-        except Exception as e:
-            clean_err = sanitize_error_message(e)
-            if "not_found" in clean_err.lower() or "404" in clean_err:
-                status = "unavailable"
-                verification_message = f"Configured model '{DEFAULT_MODEL}' was not found: {clean_err}"
-            elif "401" in clean_err or "api_key_invalid" in clean_err.lower():
-                status = "unauthenticated"
-                verification_message = "Provided API key is invalid or expired."
-            else:
-                status = "configured"
-                verification_message = f"Configured model '{DEFAULT_MODEL}'. Client initialized."
-
-    display_name = "Gemini 3.8 Flash" if DEFAULT_MODEL == "gemini-3.8-flash" else DEFAULT_MODEL.replace("-", " ").title()
-
-    return {
-        "provider": "Google Gemini",
-        "configured_model": DEFAULT_MODEL,
-        "display_model": display_name,
-        "status": status,
-        "has_api_key": has_key,
-        "model_verified": is_verified,
-        "message": verification_message,
-    }
+@app.post("/api/system/model-cache/refresh")
+async def refresh_model_cache(x_gemini_api_key: Optional[str] = Header(None)):
+    invalidate_model_cache(api_key=x_gemini_api_key)
+    return get_model_status_payload(api_key=x_gemini_api_key)
 
 @app.get("/api/config")
-async def get_system_config():
-    has_env_key = bool(get_api_key())
-    display_name = "Gemini 3.8 Flash" if DEFAULT_MODEL == "gemini-3.8-flash" else DEFAULT_MODEL.replace("-", " ").title()
+async def get_system_config(x_gemini_api_key: Optional[str] = Header(None)):
+    payload = get_model_status_payload(api_key=x_gemini_api_key)
     return {
         "provider": "Google Gemini",
-        "configured_model": DEFAULT_MODEL,
-        "display_model": display_name,
-        "status": "configured" if has_env_key else "pending_key",
-        "has_api_key_configured": has_env_key,
+        "selection_mode": payload["selection_mode"],
+        "configured_model": payload["selected_model"],
+        "selected_model": payload["selected_model"],
+        "display_model": payload["display_model"],
+        "status": payload["status"],
+        "has_api_key_configured": payload["has_api_key"],
+        "compatible_models_count": payload["compatible_models_count"],
     }
 
 @app.get("/api/health")
 async def health_check():
     has_env_key = bool(get_api_key())
-    display_name = "Gemini 3.8 Flash" if DEFAULT_MODEL == "gemini-3.8-flash" else DEFAULT_MODEL.replace("-", " ").title()
+    selected_model, selection_mode, _ = get_active_model_selection()
     return {
         "status": "healthy",
         "service": "VYORA AI Media Knowledge Extractor",
         "provider": "Google Gemini",
-        "configured_model": DEFAULT_MODEL,
-        "display_model": display_name,
-        "model": DEFAULT_MODEL,
+        "selection_mode": selection_mode,
+        "configured_model": selected_model,
+        "selected_model": selected_model,
+        "display_model": format_model_display_name(selected_model),
+        "model": selected_model,
         "has_api_key_configured": has_env_key,
         "active_jobs_count": len(ACTIVE_JOBS),
     }
@@ -178,20 +155,14 @@ async def verify_api_key(req: VerifyKeyRequest):
     if not req.api_key or not req.api_key.strip():
         return VerifyKeyResponse(valid=False, message="API key is empty")
     try:
-        client = genai.Client(api_key=req.api_key.strip())
-        try:
-            client.models.get(model=DEFAULT_MODEL)
+        payload = get_model_status_payload(api_key=req.api_key.strip())
+        if payload["status"] in ("connected", "configured"):
             return VerifyKeyResponse(
                 valid=True,
-                message=f"Connected to Google Gemini API. Configured model '{DEFAULT_MODEL}' is active and verified."
+                message=f"Connected to Google Gemini API. {payload['compatible_models_count']} compatible models discovered. Active: '{payload['display_model']}'."
             )
-        except Exception:
-            models_pager = client.models.list(config={"page_size": 3})
-            models = list(models_pager)
-            return VerifyKeyResponse(
-                valid=True,
-                message=f"Connected to Gemini API ({len(models)} models available). Note: '{DEFAULT_MODEL}' may require project billing enablement."
-            )
+        else:
+            return VerifyKeyResponse(valid=False, message=payload.get("message") or "Verification failed")
     except Exception as e:
         sanitized = sanitize_error_message(e)
         return VerifyKeyResponse(valid=False, message=f"Verification failed: {sanitized}")

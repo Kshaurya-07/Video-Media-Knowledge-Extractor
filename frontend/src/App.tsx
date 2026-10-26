@@ -7,6 +7,7 @@ import { WorkspacePage } from './components/pages/WorkspacePage';
 import { LibraryPage } from './components/pages/LibraryPage';
 import { SettingsModal } from './components/SettingsModal';
 import { ExportModal } from './components/ExportModal';
+import { ModelStatusModal } from './components/ModelStatusModal';
 
 import { MediaAnalysisResult } from './lib/types';
 import {
@@ -30,10 +31,10 @@ import {
   Sparkles,
   ChevronLeft,
   ChevronRight,
-  Key,
   CheckCircle,
   AlertCircle,
   Compass,
+  Cpu,
 } from 'lucide-react';
 
 export const App: React.FC = () => {
@@ -54,6 +55,7 @@ export const App: React.FC = () => {
   // Modals
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
+  const [isModelModalOpen, setIsModelModalOpen] = useState(false);
   const [hasApiKey, setHasApiKey] = useState(false);
   const [systemConfig, setSystemConfig] = useState<SystemConfig | null>(null);
   const [modelStatus, setModelStatus] = useState<ModelStatusResponse | null>(null);
@@ -277,24 +279,30 @@ export const App: React.FC = () => {
                   </button>
                 )}
 
-                {/* API Key / Model Status Pill */}
+                {/* Dynamic Gemini Auto Model Status Pill */}
                 <button
-                  onClick={() => setIsSettingsOpen(true)}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-mono transition-all ${
+                  onClick={() => {
+                    if (!hasApiKey) {
+                      setIsSettingsOpen(true);
+                    } else {
+                      setIsModelModalOpen(true);
+                    }
+                  }}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-mono transition-all cursor-pointer ${
                     modelStatus?.status === 'offline'
                       ? 'bg-rose-500/10 border-rose-500/30 text-rose-300'
                       : hasApiKey
-                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20'
                       : 'bg-amber-500/10 border-amber-500/30 text-amber-300 animate-pulse'
                   }`}
-                  title={modelStatus?.message || `${modelStatus?.display_model || 'Gemini 3.8 Flash'} status`}
+                  title={hasApiKey ? 'Click to inspect Gemini Auto Model Intelligence & candidates' : 'Click to configure API Key'}
                 >
-                  <Key className="w-3 h-3" />
+                  <Cpu className="w-3.5 h-3.5 text-violet-400" />
                   <span>
                     {modelStatus?.status === 'offline'
                       ? 'API Offline'
                       : hasApiKey
-                      ? `${modelStatus?.display_model || systemConfig?.display_model || 'Gemini 3.8 Flash'} Active`
+                      ? `Gemini Auto · ${modelStatus?.display_model || systemConfig?.display_model || 'Gemini 3.8 Flash'}`
                       : 'Enter API Key'}
                   </span>
                   {modelStatus?.status === 'offline' ? (
@@ -354,6 +362,13 @@ export const App: React.FC = () => {
           setHasApiKey(true);
           refreshStatus();
         }}
+      />
+
+      <ModelStatusModal
+        isOpen={isModelModalOpen}
+        onClose={() => setIsModelModalOpen(false)}
+        modelStatus={modelStatus}
+        onRefresh={(refreshed) => setModelStatus(refreshed)}
       />
 
       {activeAnalysis && (

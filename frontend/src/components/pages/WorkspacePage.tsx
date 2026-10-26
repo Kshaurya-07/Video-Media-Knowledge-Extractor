@@ -194,6 +194,15 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
           <h2 className="text-xs font-bold text-white truncate max-w-md">
             {analysis.title}
           </h2>
+          {analysis.selected_model && (
+            <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-violet-500/10 border border-violet-500/20 text-[11px] font-mono text-violet-300">
+              <Sparkles className="w-3 h-3 text-violet-400" />
+              <span>
+                {analysis.model_selection_mode === 'fallback' ? 'Fallback: ' : 'Gemini Auto: '}
+                {analysis.selected_model}
+              </span>
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-3">

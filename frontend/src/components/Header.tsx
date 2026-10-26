@@ -30,7 +30,7 @@ export const Header: React.FC<HeaderProps> = ({
                 VYORA AI
               </span>
               <span className="text-[10px] font-semibold tracking-wider uppercase px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                Gemini 3.8 Flash
+                Gemini Auto
               </span>
             </div>
             <p className="text-xs text-slate-400 hidden sm:block">

@@ -32,7 +32,7 @@ def test_config_endpoint():
 
 def test_system_model_status_endpoint_no_key():
     """Verify system model status endpoint safely returns model metadata without API key."""
-    with patch("app.main.get_api_key", return_value=""):
+    with patch("app.services.model_discovery_service.get_api_key", return_value=""):
         response = client.get("/api/system/model-status")
         assert response.status_code == 200
         data = response.json()
@@ -47,13 +47,19 @@ def test_system_model_status_endpoint_no_key():
 
 def test_system_model_status_endpoint_verified():
     """Verify system model status endpoint returns connected when model is verified."""
-    with patch("app.main.get_api_key", return_value="mock_key_xyz"), \
-         patch("app.main.genai.Client") as mock_client_cls:
+    mock_model = MagicMock()
+    mock_model.name = "models/gemini-3.8-flash"
+    mock_model.display_name = "Gemini 3.8 Flash"
+    mock_model.supported_actions = ["generateContent"]
+    mock_model.input_token_limit = 1048576
+
+    with patch("app.services.model_discovery_service.get_api_key", return_value="mock_key_xyz"), \
+         patch("app.services.model_discovery_service.genai.Client") as mock_client_cls:
         mock_instance = MagicMock()
         mock_client_cls.return_value = mock_instance
-        mock_instance.models.get.return_value = MagicMock(name="models/gemini-3.8-flash")
+        mock_instance.models.list.return_value = [mock_model]
 
-        response = client.get("/api/system/model-status")
+        response = client.get("/api/system/model-status", headers={"X-Gemini-Api-Key": "mock_key_xyz"})
         assert response.status_code == 200
         data = response.json()
         assert data["provider"] == "Google Gemini"
@@ -63,7 +69,6 @@ def test_system_model_status_endpoint_verified():
         assert data["has_api_key"] is True
         assert data["model_verified"] is True
         assert "api_key" not in data
-        mock_instance.models.get.assert_called_once_with(model="gemini-3.8-flash")
 
 
 def test_verify_key_endpoint_empty():

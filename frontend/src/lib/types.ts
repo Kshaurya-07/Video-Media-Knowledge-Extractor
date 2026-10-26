@@ -65,6 +65,8 @@ export interface MediaAnalysisResult {
   action_items: ActionItem[];
   sentiment_and_tone: SentimentAndTone;
   created_at: string;
+  selected_model?: string;
+  model_selection_mode?: 'automatic' | 'preferred_override' | 'fallback';
 }
 
 export interface ProjectSummary {
@@ -139,4 +141,7 @@ export interface ProcessingJobStatus {
   progress_percent: number;
   message: string;
   error_message?: string;
+  selected_model?: string;
+  model_selection_mode?: string;
+  fallback_history?: string;
 }

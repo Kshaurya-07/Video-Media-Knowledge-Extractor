@@ -170,6 +170,21 @@ def init_db():
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_notes_pid ON notes(project_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_bookmarks_pid ON bookmarks(project_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_pid ON chat_messages(project_id)")
+
+        # Ensure schema migrations for model discovery & selection metadata
+        cursor.execute("PRAGMA table_info(processing_jobs)")
+        job_cols = [row["name"] for row in cursor.fetchall()]
+        if "selected_model" not in job_cols:
+            cursor.execute("ALTER TABLE processing_jobs ADD COLUMN selected_model TEXT")
+        if "model_selection_mode" not in job_cols:
+            cursor.execute("ALTER TABLE processing_jobs ADD COLUMN model_selection_mode TEXT")
+        if "fallback_history" not in job_cols:
+            cursor.execute("ALTER TABLE processing_jobs ADD COLUMN fallback_history TEXT")
+
+        cursor.execute("PRAGMA table_info(projects)")
+        proj_cols = [row["name"] for row in cursor.fetchall()]
+        if "selected_model" not in proj_cols:
+            cursor.execute("ALTER TABLE projects ADD COLUMN selected_model TEXT")
         
         conn.commit()
 
@@ -306,3 +321,6 @@ def seed_demo_project_if_needed():
         ))
 
         conn.commit()
+
+# Ensure tables and migrations are initialized on module load
+init_db()

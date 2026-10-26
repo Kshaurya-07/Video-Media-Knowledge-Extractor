@@ -11,6 +11,10 @@ from app.services.gemini_extractor import (
     get_cached_result,
     sanitize_error_message,
 )
+from app.services.model_discovery_service import (
+    get_active_model_selection,
+    format_model_display_name,
+)
 from app.services.media_service import format_seconds, get_media_mime_type
 
 # In-memory job tracker for immediate reactivity
@@ -43,9 +47,16 @@ def update_job_status(
     progress: float,
     message: str,
     error: Optional[str] = None,
-    project_id: Optional[str] = None
+    project_id: Optional[str] = None,
+    selected_model: Optional[str] = None,
+    model_selection_mode: Optional[str] = None,
+    fallback_history: Optional[str] = None,
 ):
     current = ACTIVE_JOBS.get(job_id, {})
+    model = selected_model or current.get("selected_model")
+    mode = model_selection_mode or current.get("model_selection_mode", "automatic")
+    fb_hist = fallback_history or current.get("fallback_history")
+
     ACTIVE_JOBS[job_id] = {
         "job_id": job_id,
         "project_id": project_id or current.get("project_id"),
@@ -53,28 +64,50 @@ def update_job_status(
         "progress_percent": progress,
         "message": message,
         "error_message": error,
+        "selected_model": model,
+        "model_selection_mode": mode,
+        "fallback_history": fb_hist,
         "updated_at": time.time(),
     }
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("""
         UPDATE processing_jobs
-        SET stage = ?, progress_percent = ?, message = ?, error_message = ?, updated_at = CURRENT_TIMESTAMP
+        SET stage = ?, progress_percent = ?, message = ?, error_message = ?,
+            selected_model = ?, model_selection_mode = ?, fallback_history = ?,
+            updated_at = CURRENT_TIMESTAMP
         WHERE job_id = ?
-        """, (stage, progress, message, error, job_id))
+        """, (stage, progress, message, error, model, mode, fb_hist, job_id))
         conn.commit()
 
 async def process_media_background_job(job_id: str, project_id: str, file_path: Path, api_key: Optional[str] = None):
     try:
+        # Pre-resolve model for this job to lock it in and display it in progress status
+        resolved_model, selection_mode, _ = get_active_model_selection(api_key=api_key)
+        disp_name = format_model_display_name(resolved_model)
+
         def on_stage(stage: str, progress: float, message: str):
-            update_job_status(job_id, stage, progress, message, project_id=project_id)
+            update_job_status(
+                job_id,
+                stage,
+                progress,
+                message,
+                project_id=project_id,
+                selected_model=resolved_model,
+                model_selection_mode=selection_mode,
+            )
 
         # Initial validation stage
-        on_stage("UPLOADING", 10.0, "Verifying local media stream and initializing AI pipeline...")
+        on_stage("UPLOADING", 10.0, f"Initializing pipeline with {disp_name} ({selection_mode})...")
 
         # Run multimodal extraction with Gemini (or cached/demo data)
         try:
-            analysis = await extract_media_knowledge(project_id, api_key=api_key, on_stage=on_stage)
+            analysis = await extract_media_knowledge(
+                project_id,
+                api_key=api_key,
+                on_stage=on_stage,
+                selected_model_override=resolved_model,
+            )
         except Exception as e:
             # If no API key or API call fails, check if we have a demo cache or fallback
             cached = get_cached_result(project_id)
@@ -83,8 +116,12 @@ async def process_media_background_job(job_id: str, project_id: str, file_path: 
             else:
                 raise e
 
+        # If a fallback happened during extraction, update resolved_model to match analysis.selected_model
+        final_model = getattr(analysis, "selected_model", None) or resolved_model
+        final_mode = getattr(analysis, "model_selection_mode", None) or selection_mode
+
         # Finalizing & Saving structured intelligence
-        on_stage("FINALIZING", 95.0, "Persisting structured intelligence into knowledge database...")
+        on_stage("FINALIZING", 95.0, f"Persisting structured knowledge (analyzed with {format_model_display_name(final_model)})...")
         
         with get_db() as conn:
             cursor = conn.cursor()
@@ -92,13 +129,14 @@ async def process_media_background_job(job_id: str, project_id: str, file_path: 
             # Update project info
             cursor.execute("""
             UPDATE projects
-            SET title = ?, description = ?, duration_seconds = ?, duration_formatted = ?, status = 'COMPLETED'
+            SET title = ?, description = ?, duration_seconds = ?, duration_formatted = ?, status = 'COMPLETED', selected_model = ?
             WHERE id = ?
             """, (
                 analysis.title,
                 analysis.overview,
                 analysis.duration_seconds,
                 analysis.duration_formatted,
+                final_model,
                 project_id
             ))
 
@@ -184,7 +222,15 @@ async def process_media_background_job(job_id: str, project_id: str, file_path: 
 
             conn.commit()
 
-        update_job_status(job_id, "COMPLETED", 100.0, "Knowledge extraction complete! Ready to explore.", project_id=project_id)
+        update_job_status(
+            job_id,
+            "COMPLETED",
+            100.0,
+            f"Knowledge extraction complete! Analyzed with {format_model_display_name(final_model)}.",
+            project_id=project_id,
+            selected_model=final_model,
+            model_selection_mode=final_mode,
+        )
 
     except Exception as exc:
         sanitized_err = sanitize_error_message(exc)
