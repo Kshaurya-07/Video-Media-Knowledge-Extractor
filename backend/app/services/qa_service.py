@@ -6,19 +6,26 @@ from fastapi import HTTPException
 
 from app.config import DEFAULT_MODEL, get_api_key
 from app.models.schemas import ChatMessage, ChatResponse, TimestampCitation
-from app.services.gemini_extractor import get_cached_result, FILE_REF_REGISTRY, clean_json_text
+from app.services.gemini_extractor import (
+    get_cached_result,
+    FILE_REF_REGISTRY,
+    clean_json_text,
+    sanitize_error_message,
+)
 
-QA_SYSTEM_PROMPT = """You are an interactive AI Knowledge Assistant for a video/audio recording.
+QA_SYSTEM_PROMPT = """You are an interactive AI Knowledge Assistant for VYORA AI analyzing a video/audio recording.
 The user is asking questions about the contents, discussions, slides, demonstrations, or key points in this media.
 
 You have access to:
 1. The media file itself (if available).
 2. The extracted metadata, executive summary, chapters, transcript, and visual scene analysis.
 
-Your goal:
+CRITICAL GROUNDING RULES:
 - Answer the user's question thoroughly and accurately based exclusively on the media contents.
-- Always include timestamp citations in your answer when referencing specific moments, quotes, slides, or demonstrations. Format citations in text as `[MM:SS]` (e.g. "[02:15]").
-- Also populate the "citations" array with each cited timestamp (seconds as float, formatted string as "MM:SS", and a short phrase describing the context).
+- If the question cannot be answered from the media or asks about topics not covered, state clearly and concisely: "The provided recording does not discuss or cover this topic."
+- Do NOT fabricate facts, claims, transcript lines, or citations.
+- When referencing specific moments, quotes, slides, or demonstrations, include timestamp citations in your answer as `[MM:SS]` (e.g. "[02:15]").
+- Populate the "citations" array with each cited timestamp (seconds as float, formatted string as "MM:SS", and a short phrase describing the context). If the topic is not covered, return an empty citations list.
 
 Output JSON ONLY with this structure:
 {
@@ -46,7 +53,8 @@ async def answer_media_question(
     try:
         client = genai.Client(api_key=resolved_key)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to initialize Gemini Client: {str(e)}")
+        clean_err = sanitize_error_message(e)
+        raise HTTPException(status_code=400, detail=f"Failed to initialize Gemini Client: {clean_err}")
 
     # Retrieve cached analysis for grounded context
     cached_analysis = get_cached_result(file_id)
@@ -116,4 +124,7 @@ Conversation History:
             citations=[]
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate answer: {str(e)}")
+        sanitized = sanitize_error_message(e)
+        if "API_KEY_INVALID" in sanitized:
+            raise HTTPException(status_code=401, detail="Google Gemini API Key is invalid.")
+        raise HTTPException(status_code=500, detail=f"Failed to generate answer: {sanitized}")

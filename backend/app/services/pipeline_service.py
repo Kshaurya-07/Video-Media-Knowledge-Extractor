@@ -3,18 +3,52 @@ import json
 import uuid
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Any
 from app.database import get_db
 from app.config import UPLOAD_DIR, BASE_DIR
-from app.services.gemini_extractor import extract_media_knowledge, get_cached_result
+from app.services.gemini_extractor import (
+    extract_media_knowledge,
+    get_cached_result,
+    sanitize_error_message,
+)
 from app.services.media_service import format_seconds, get_media_mime_type
 
 # In-memory job tracker for immediate reactivity
-ACTIVE_JOBS = {}
+ACTIVE_JOBS: Dict[str, Dict[str, Any]] = {}
 
-def update_job_status(job_id: str, stage: str, progress: float, message: str, error: Optional[str] = None):
+def get_active_job_for_project(project_id: str) -> Optional[Dict[str, Any]]:
+    """Check in-memory and database for an active (non-terminal) processing job."""
+    for jid, job in ACTIVE_JOBS.items():
+        if job.get("project_id") == project_id and job.get("stage") not in ("COMPLETED", "FAILED"):
+            return job
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT * FROM processing_jobs 
+            WHERE project_id = ? AND stage NOT IN ('COMPLETED', 'FAILED')
+            ORDER BY created_at DESC LIMIT 1
+            """,
+            (project_id,)
+        )
+        row = cursor.fetchone()
+        if row:
+            return dict(row)
+    return None
+
+def update_job_status(
+    job_id: str,
+    stage: str,
+    progress: float,
+    message: str,
+    error: Optional[str] = None,
+    project_id: Optional[str] = None
+):
+    current = ACTIVE_JOBS.get(job_id, {})
     ACTIVE_JOBS[job_id] = {
         "job_id": job_id,
+        "project_id": project_id or current.get("project_id"),
         "stage": stage,
         "progress_percent": progress,
         "message": message,
@@ -32,39 +66,25 @@ def update_job_status(job_id: str, stage: str, progress: float, message: str, er
 
 async def process_media_background_job(job_id: str, project_id: str, file_path: Path, api_key: Optional[str] = None):
     try:
-        # Stage 1: UPLOADING / VERIFYING
-        update_job_status(job_id, "UPLOADING", 15.0, "Verifying media format and stream integrity...")
-        await asyncio.sleep(1.0)
+        def on_stage(stage: str, progress: float, message: str):
+            update_job_status(job_id, stage, progress, message, project_id=project_id)
 
-        # Stage 2: EXTRACTING AUDIO
-        update_job_status(job_id, "EXTRACTING_AUDIO", 30.0, "Sampling acoustic features and isolating speaker frequencies...")
-        await asyncio.sleep(1.2)
+        # Initial validation stage
+        on_stage("UPLOADING", 10.0, "Verifying local media stream and initializing AI pipeline...")
 
-        # Stage 3: TRANSCRIBING
-        update_job_status(job_id, "TRANSCRIBING", 50.0, "Generating timestamped speech-to-text transcript...")
-        await asyncio.sleep(1.5)
-
-        # Stage 4: IDENTIFYING CHAPTERS
-        update_job_status(job_id, "IDENTIFYING_CHAPTERS", 70.0, "Detecting topic shifts, visual slides, and chapter boundaries...")
-        await asyncio.sleep(1.2)
-
-        # Stage 5: INDEXING KNOWLEDGE
-        update_job_status(job_id, "INDEXING", 85.0, "Synthesizing executive summary, key takeaways, and entity map...")
-
-        # Run actual extraction with Gemini (or cached/demo data)
+        # Run multimodal extraction with Gemini (or cached/demo data)
         try:
-            analysis = await extract_media_knowledge(project_id, api_key=api_key)
+            analysis = await extract_media_knowledge(project_id, api_key=api_key, on_stage=on_stage)
         except Exception as e:
             # If no API key or API call fails, check if we have a demo cache or fallback
             cached = get_cached_result(project_id)
             if cached:
                 analysis = cached
             else:
-                # If it failed due to API key, propagate error
                 raise e
 
-        # Stage 6: FINALIZING & SAVING TO DATABASE
-        update_job_status(job_id, "FINALIZING", 95.0, "Saving structured intelligence into knowledge database...")
+        # Finalizing & Saving structured intelligence
+        on_stage("FINALIZING", 95.0, "Persisting structured intelligence into knowledge database...")
         
         with get_db() as conn:
             cursor = conn.cursor()
@@ -95,7 +115,7 @@ async def process_media_background_job(job_id: str, project_id: str, file_path: 
                 json.dumps(analysis.sentiment_and_tone)
             ))
 
-            # Delete old chapters/transcript if re-running
+            # Clear previous entries if re-processing
             cursor.execute("DELETE FROM chapters WHERE project_id = ?", (project_id,))
             cursor.execute("DELETE FROM transcript_segments WHERE project_id = ?", (project_id,))
             cursor.execute("DELETE FROM visual_scenes WHERE project_id = ?", (project_id,))
@@ -164,11 +184,20 @@ async def process_media_background_job(job_id: str, project_id: str, file_path: 
 
             conn.commit()
 
-        update_job_status(job_id, "COMPLETED", 100.0, "Knowledge extraction complete! Ready to explore.")
+        update_job_status(job_id, "COMPLETED", 100.0, "Knowledge extraction complete! Ready to explore.", project_id=project_id)
 
     except Exception as exc:
-        update_job_status(job_id, "FAILED", 0.0, f"Processing failed: {str(exc)}", error=str(exc))
+        sanitized_err = sanitize_error_message(exc)
+        update_job_status(
+            job_id,
+            "FAILED",
+            0.0,
+            f"Processing failed: {sanitized_err}",
+            error=sanitized_err,
+            project_id=project_id
+        )
         with get_db() as conn:
             cursor = conn.cursor()
             cursor.execute("UPDATE projects SET status = 'FAILED' WHERE id = ?", (project_id,))
             conn.commit()
+

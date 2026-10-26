@@ -79,6 +79,7 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
 
   const handleSeek = (seconds: number) => {
     playerRef.current?.seekTo(seconds);
+    setCurrentTime(seconds);
   };
 
   const handleSaveBookmark = async () => {

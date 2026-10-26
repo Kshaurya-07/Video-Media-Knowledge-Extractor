@@ -52,7 +52,11 @@ from app.services.gemini_extractor import (
     save_cache_result,
 )
 from app.services.qa_service import answer_media_question
-from app.services.pipeline_service import process_media_background_job, ACTIVE_JOBS
+from app.services.pipeline_service import (
+    process_media_background_job,
+    get_active_job_for_project,
+    ACTIVE_JOBS,
+)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -445,7 +449,6 @@ async def start_processing(
     x_gemini_api_key: Optional[str] = Header(None)
 ):
     key = req.api_key or x_gemini_api_key or get_api_key()
-    job_id = str(uuid.uuid4())[:10]
     
     file_id = req.file_id
     if not file_id:
@@ -453,6 +456,18 @@ async def start_processing(
             file_id = "demo_presentation"  # Route demo sample or download
         else:
             raise HTTPException(status_code=400, detail="file_id or url is required")
+
+    # Prevent duplicate active jobs for the same media file
+    existing_job = get_active_job_for_project(file_id)
+    if existing_job:
+        return {
+            "job_id": existing_job.get("job_id"),
+            "project_id": file_id,
+            "stage": existing_job.get("stage"),
+            "message": existing_job.get("message", "Processing is already active for this media.")
+        }
+
+    job_id = str(uuid.uuid4())[:10]
 
     # Record job in database
     with get_db() as conn:
@@ -465,6 +480,7 @@ async def start_processing(
 
     ACTIVE_JOBS[job_id] = {
         "job_id": job_id,
+        "project_id": file_id,
         "stage": "QUEUED",
         "progress_percent": 5.0,
         "message": "Job queued in VYORA background queue...",
@@ -552,6 +568,7 @@ async def chat_with_media(
     return response
 
 @app.api_route("/api/media/{file_id}", methods=["GET", "HEAD"])
+@app.api_route("/api/stream/{file_id}", methods=["GET", "HEAD"])
 async def stream_media(file_id: str, request: Request):
     media_path = get_media_path(file_id)
     range_header = request.headers.get("range")
@@ -570,8 +587,10 @@ async def stream_media(file_id: str, request: Request):
 
     status_code = status.HTTP_206_PARTIAL_CONTENT if range_header else status.HTTP_200_OK
 
+    iterator = stream_generator() if callable(stream_generator) else stream_generator
+
     return StreamingResponse(
-        stream_generator(),
+        iterator,
         status_code=status_code,
         headers=headers,
         media_type=content_type
