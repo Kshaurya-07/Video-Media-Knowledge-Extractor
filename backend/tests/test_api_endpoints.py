@@ -30,6 +30,42 @@ def test_config_endpoint():
     assert "api_key" not in data
 
 
+def test_system_model_status_endpoint_no_key():
+    """Verify system model status endpoint safely returns model metadata without API key."""
+    with patch("app.main.get_api_key", return_value=""):
+        response = client.get("/api/system/model-status")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["provider"] == "Google Gemini"
+        assert data["configured_model"] == "gemini-3.8-flash"
+        assert data["display_model"] == "Gemini 3.8 Flash"
+        assert data["status"] == "pending_key"
+        assert data["has_api_key"] is False
+        assert data["model_verified"] is False
+        assert "api_key" not in data
+
+
+def test_system_model_status_endpoint_verified():
+    """Verify system model status endpoint returns connected when model is verified."""
+    with patch("app.main.get_api_key", return_value="mock_key_xyz"), \
+         patch("app.main.genai.Client") as mock_client_cls:
+        mock_instance = MagicMock()
+        mock_client_cls.return_value = mock_instance
+        mock_instance.models.get.return_value = MagicMock(name="models/gemini-3.8-flash")
+
+        response = client.get("/api/system/model-status")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["provider"] == "Google Gemini"
+        assert data["configured_model"] == "gemini-3.8-flash"
+        assert data["display_model"] == "Gemini 3.8 Flash"
+        assert data["status"] == "connected"
+        assert data["has_api_key"] is True
+        assert data["model_verified"] is True
+        assert "api_key" not in data
+        mock_instance.models.get.assert_called_once_with(model="gemini-3.8-flash")
+
+
 def test_verify_key_endpoint_empty():
     """Verify key verification rejects empty key with actionable message."""
     response = client.post("/api/verify-key", json={"api_key": ""})

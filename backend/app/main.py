@@ -104,6 +104,48 @@ class StartProcessingRequest(BaseModel):
     api_key: Optional[str] = None
 
 # ----------------- Health & Configuration -----------------
+@app.get("/api/system/model-status")
+async def get_system_model_status(x_gemini_api_key: Optional[str] = Header(None)):
+    api_key = get_api_key(x_gemini_api_key)
+    has_key = bool(api_key and api_key.strip())
+    
+    status = "pending_key"
+    is_verified = False
+    verification_message = "No Gemini API key configured. Provide an API key in Settings."
+
+    if has_key:
+        status = "configured"
+        verification_message = f"Model '{DEFAULT_MODEL}' configured with API key."
+        try:
+            client = genai.Client(api_key=api_key.strip())
+            client.models.get(model=DEFAULT_MODEL)
+            is_verified = True
+            status = "connected"
+            verification_message = f"Model '{DEFAULT_MODEL}' is active, available, and connected."
+        except Exception as e:
+            clean_err = sanitize_error_message(e)
+            if "not_found" in clean_err.lower() or "404" in clean_err:
+                status = "unavailable"
+                verification_message = f"Configured model '{DEFAULT_MODEL}' was not found: {clean_err}"
+            elif "401" in clean_err or "api_key_invalid" in clean_err.lower():
+                status = "unauthenticated"
+                verification_message = "Provided API key is invalid or expired."
+            else:
+                status = "configured"
+                verification_message = f"Configured model '{DEFAULT_MODEL}'. Client initialized."
+
+    display_name = "Gemini 3.8 Flash" if DEFAULT_MODEL == "gemini-3.8-flash" else DEFAULT_MODEL.replace("-", " ").title()
+
+    return {
+        "provider": "Google Gemini",
+        "configured_model": DEFAULT_MODEL,
+        "display_model": display_name,
+        "status": status,
+        "has_api_key": has_key,
+        "model_verified": is_verified,
+        "message": verification_message,
+    }
+
 @app.get("/api/config")
 async def get_system_config():
     has_env_key = bool(get_api_key())

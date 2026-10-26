@@ -15,7 +15,9 @@ import {
   setStoredUser,
   fetchProjectDetails,
   fetchSystemConfig,
+  fetchModelStatus,
   SystemConfig,
+  ModelStatusResponse,
 } from './lib/api';
 
 import {
@@ -54,21 +56,31 @@ export const App: React.FC = () => {
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [hasApiKey, setHasApiKey] = useState(false);
   const [systemConfig, setSystemConfig] = useState<SystemConfig | null>(null);
+  const [modelStatus, setModelStatus] = useState<ModelStatusResponse | null>(null);
+
+  const refreshStatus = () => {
+    const storedKey = getStoredApiKey();
+    if (storedKey) {
+      setHasApiKey(true);
+    }
+
+    fetchModelStatus().then((ms) => {
+      setModelStatus(ms);
+      if (ms.has_api_key) setHasApiKey(true);
+    });
+
+    fetchSystemConfig().then((cfg) => {
+      setSystemConfig(cfg);
+      if (cfg.has_api_key_configured) setHasApiKey(true);
+    });
+  };
 
   // Initial session & key hydration
   useEffect(() => {
     const storedUser = getStoredUser();
     if (storedUser) setUser(storedUser);
 
-    const storedKey = getStoredApiKey();
-    if (storedKey) {
-      setHasApiKey(true);
-    }
-
-    fetchSystemConfig().then((cfg) => {
-      setSystemConfig(cfg);
-      if (cfg.has_api_key_configured) setHasApiKey(true);
-    });
+    refreshStatus();
   }, []);
 
   const handleOpenProject = async (projectId: string) => {
@@ -265,22 +277,29 @@ export const App: React.FC = () => {
                   </button>
                 )}
 
-                {/* API Key Status Pill */}
+                {/* API Key / Model Status Pill */}
                 <button
                   onClick={() => setIsSettingsOpen(true)}
                   className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-mono transition-all ${
-                    hasApiKey
+                    modelStatus?.status === 'offline'
+                      ? 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                      : hasApiKey
                       ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
                       : 'bg-amber-500/10 border-amber-500/30 text-amber-300 animate-pulse'
                   }`}
+                  title={modelStatus?.message || `${modelStatus?.display_model || 'Gemini 3.8 Flash'} status`}
                 >
                   <Key className="w-3 h-3" />
                   <span>
-                    {hasApiKey
-                      ? `${systemConfig?.display_model || 'Gemini 3.8 Flash'} Active`
+                    {modelStatus?.status === 'offline'
+                      ? 'API Offline'
+                      : hasApiKey
+                      ? `${modelStatus?.display_model || systemConfig?.display_model || 'Gemini 3.8 Flash'} Active`
                       : 'Enter API Key'}
                   </span>
-                  {hasApiKey ? (
+                  {modelStatus?.status === 'offline' ? (
+                    <AlertCircle className="w-3 h-3 text-rose-400" />
+                  ) : hasApiKey ? (
                     <CheckCircle className="w-3 h-3 text-emerald-400" />
                   ) : (
                     <AlertCircle className="w-3 h-3 text-amber-400" />
@@ -331,7 +350,10 @@ export const App: React.FC = () => {
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
-        onKeySaved={() => setHasApiKey(true)}
+        onKeySaved={() => {
+          setHasApiKey(true);
+          refreshStatus();
+        }}
       />
 
       {activeAnalysis && (

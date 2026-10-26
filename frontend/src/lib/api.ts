@@ -9,9 +9,22 @@ import {
 } from './types';
 import { KnowledgeGraphNode, KnowledgeGraphLink } from '../components/3d/KnowledgeMap3D';
 
-const API_BASE = import.meta.env.VITE_API_URL
-  ? `${import.meta.env.VITE_API_URL.replace(/\/+$/, '')}/api`
-  : '/api';
+function resolveApiBase(): string {
+  let url = import.meta.env.VITE_API_URL;
+  if (!url || typeof url !== 'string') return '/api';
+  url = url.trim();
+  if (!url) return '/api';
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    if (url.includes('localhost') || url.includes('127.0.0.1')) {
+      url = `http://${url}`;
+    } else {
+      url = `https://${url}`;
+    }
+  }
+  return `${url.replace(/\/+$/, '')}/api`;
+}
+
+const API_BASE = resolveApiBase();
 
 export function getStoredApiKey(): string {
   return localStorage.getItem('vyora_gemini_api_key') || '';
@@ -99,6 +112,61 @@ export async function fetchSystemConfig(): Promise<SystemConfig> {
     display_model: 'Gemini 3.8 Flash',
     status: 'offline',
     has_api_key_configured: false,
+  };
+}
+
+export interface ModelStatusResponse {
+  provider: string;
+  configured_model: string;
+  display_model: string;
+  status: 'connected' | 'configured' | 'pending_key' | 'offline' | 'error';
+  has_api_key: boolean;
+  model_verified: boolean;
+  message?: string;
+}
+
+export async function fetchModelStatus(): Promise<ModelStatusResponse> {
+  const customKey = getStoredApiKey();
+  const headers: Record<string, string> = {};
+  if (customKey) {
+    headers['X-Gemini-Api-Key'] = customKey;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/system/model-status`, { headers });
+    if (res.ok) {
+      const data = await res.json();
+      return data;
+    }
+  } catch {
+    // fallback to /config
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/config`, { headers });
+    if (res.ok) {
+      const data = await res.json();
+      return {
+        provider: data.provider || 'Google Gemini',
+        configured_model: data.configured_model || 'gemini-3.8-flash',
+        display_model: data.display_model || formatModelDisplay(data.configured_model),
+        status: data.status === 'configured' ? 'configured' : 'pending_key',
+        has_api_key: Boolean(data.has_api_key_configured),
+        model_verified: true,
+      };
+    }
+  } catch {
+    // offline
+  }
+
+  return {
+    provider: 'Google Gemini',
+    configured_model: 'gemini-3.8-flash',
+    display_model: 'Gemini 3.8 Flash',
+    status: 'offline',
+    has_api_key: Boolean(customKey),
+    model_verified: false,
+    message: 'Backend service unreachable',
   };
 }
 
