@@ -14,6 +14,16 @@ def test_health_check_endpoint():
     data = response.json()
     assert data["status"] == "healthy"
     assert "VYORA AI" in data["service"]
+    assert data["model"] == "gemini-3.8-flash"
+
+
+def test_verify_key_endpoint_empty():
+    """Verify key verification rejects empty key with actionable message."""
+    response = client.post("/api/verify-key", json={"api_key": ""})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["valid"] is False
+    assert "empty" in data["message"].lower()
 
 
 def test_get_job_status_endpoint():

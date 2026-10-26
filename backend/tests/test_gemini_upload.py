@@ -6,10 +6,13 @@ import inspect
 from google import genai
 from google.genai import types
 
+from app.config import DEFAULT_MODEL
 from app.services.gemini_extractor import (
     sanitize_error_message,
     clean_json_text,
     extract_media_knowledge,
+    map_gemini_error,
+    get_response_text,
 )
 from app.services.pipeline_service import (
     update_job_status,
@@ -100,6 +103,11 @@ async def test_extract_media_knowledge_uses_upload_file_config():
 
         assert result.title == "VYORA AI Architecture"
         assert mock_client.files.upload.called
+        assert mock_client.models.generate_content.called
+
+        # Verify model used for inference is the migrated DEFAULT_MODEL (gemini-3.8-flash)
+        gen_kwargs = mock_client.models.generate_content.call_args.kwargs
+        assert gen_kwargs["model"] == "gemini-3.8-flash"
 
         # Verify upload was called with config=types.UploadFileConfig and NOT mime_type keyword
         call_kwargs = mock_client.files.upload.call_args.kwargs
@@ -187,3 +195,60 @@ def test_clean_json_text():
 
     plain_json = '{"test": true}'
     assert clean_json_text(plain_json) == '{"test": true}'
+
+
+# ==============================================================================
+# 6. MODEL MIGRATION & ERROR MAPPING TESTS
+# ==============================================================================
+def test_default_model_is_gemini_3_8_flash():
+    """Ensure the centralized default model is configured to gemini-3.8-flash."""
+    assert DEFAULT_MODEL == "gemini-3.8-flash"
+    assert "gemini-2.5-flash" not in DEFAULT_MODEL
+
+
+def test_map_gemini_error_404_model_not_found():
+    """Verify that 404 NOT_FOUND errors map to safe HTTP 404 with actionable advice."""
+    err = Exception("404 NOT_FOUND. {'error': {'code': 404, 'message': 'This model models/gemini-2.5-flash is no longer available to new users.'}}")
+    exc = map_gemini_error(err, action="Extraction")
+    assert exc.status_code == 404
+    assert "gemini-3.8-flash" in exc.detail
+    assert "not found or unavailable" in exc.detail
+
+
+def test_map_gemini_error_401_invalid_key():
+    """Verify that authentication errors map to HTTP 401."""
+    err = Exception("API_KEY_INVALID: The provided API key is expired.")
+    exc = map_gemini_error(err, action="Inference")
+    assert exc.status_code == 401
+    assert "invalid" in exc.detail.lower()
+
+
+def test_map_gemini_error_429_quota_exceeded():
+    """Verify that rate limit errors map to HTTP 429."""
+    err = Exception("RESOURCE_EXHAUSTED: Quota exceeded for quota metric 'GenerateContent'")
+    exc = map_gemini_error(err, action="Extraction")
+    assert exc.status_code == 429
+    assert "rate limit or quota" in exc.detail.lower()
+
+
+@pytest.mark.asyncio
+async def test_missing_api_key_raises_401():
+    """Verify calling extract_media_knowledge without an API key raises 401."""
+    with patch("app.services.gemini_extractor.get_api_key", return_value=None):
+        with pytest.raises(Exception) as exc_info:
+            await extract_media_knowledge("test_id", api_key=None)
+        assert getattr(exc_info.value, "status_code", None) == 401
+
+
+def test_get_response_text_handles_both_interfaces():
+    """Verify get_response_text works with both generate_content and interactions objects."""
+    # generate_content mock
+    mock_gc = MagicMock()
+    mock_gc.text = '{"success": true}'
+    assert get_response_text(mock_gc) == '{"success": true}'
+
+    # interactions.create mock
+    mock_ia = MagicMock(spec=[])
+    mock_ia.output_text = "Analysis text from interaction"
+    assert get_response_text(mock_ia) == "Analysis text from interaction"
+

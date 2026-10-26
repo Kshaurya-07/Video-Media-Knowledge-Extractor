@@ -100,6 +100,52 @@ def sanitize_error_message(err: Exception) -> str:
     msg = re.sub(r'AIzaSy[0-9A-Za-z_-]{33}', '[REDACTED_API_KEY]', msg)
     return msg
 
+def map_gemini_error(e: Exception, action: str = "Extraction") -> HTTPException:
+    """Map Google Gemini API exceptions into clear, structured HTTPExceptions with safe messages."""
+    clean_err = sanitize_error_message(e)
+    err_lower = clean_err.lower()
+
+    if "404" in clean_err or "not_found" in err_lower or "no longer available" in err_lower or "not found" in err_lower:
+        return HTTPException(
+            status_code=404,
+            detail=f"{action} failed: Configured model '{DEFAULT_MODEL}' is not found or unavailable to your project. Please update GEMINI_MODEL. (Error: {clean_err})"
+        )
+    if "401" in clean_err or "api_key_invalid" in err_lower or "api key not valid" in err_lower or "unauthenticated" in err_lower or "invalid api key" in err_lower:
+        return HTTPException(
+            status_code=401,
+            detail="Google Gemini API Key is invalid or unauthenticated. Please verify your key in Settings."
+        )
+    if "403" in clean_err or "permission_denied" in err_lower or "forbidden" in err_lower:
+        return HTTPException(
+            status_code=403,
+            detail=f"Gemini API permission denied for model '{DEFAULT_MODEL}'. Please check project permissions and billing status."
+        )
+    if "429" in clean_err or "resource_exhausted" in err_lower or "quota" in err_lower or "rate limit" in err_lower:
+        return HTTPException(
+            status_code=429,
+            detail="Gemini API rate limit or quota exceeded. Please try again in a few moments."
+        )
+    if "503" in clean_err or "unavailable" in err_lower:
+        return HTTPException(
+            status_code=503,
+            detail="Google Gemini service is temporarily unavailable. Please retry shortly."
+        )
+    if "504" in clean_err or "deadline_exceeded" in err_lower or "timed out" in err_lower:
+        return HTTPException(
+            status_code=504,
+            detail=f"{action} timed out contacting Gemini API."
+        )
+
+    return HTTPException(status_code=500, detail=f"{action} failed: {clean_err}")
+
+def get_response_text(response: Any) -> str:
+    """Extract text from either models.generate_content or interactions.create."""
+    if hasattr(response, "text") and response.text:
+        return response.text
+    if hasattr(response, "output_text") and response.output_text:
+        return response.output_text
+    return ""
+
 def get_cached_result(file_id: str) -> Optional[MediaAnalysisResult]:
     cache_file = DATA_CACHE_DIR / f"{file_id}.json"
     if cache_file.exists():
@@ -199,12 +245,7 @@ async def extract_media_knowledge(
     except HTTPException:
         raise
     except Exception as e:
-        clean_err = sanitize_error_message(e)
-        if "API_KEY_INVALID" in clean_err or "API key not valid" in clean_err:
-            raise HTTPException(status_code=401, detail="Google Gemini API Key is invalid. Please verify your key in Settings.")
-        if "RESOURCE_EXHAUSTED" in clean_err or "Quota exceeded" in clean_err:
-            raise HTTPException(status_code=429, detail="Gemini API rate limit exceeded. Please try again in a few moments.")
-        raise HTTPException(status_code=500, detail=f"File upload to Gemini failed: {clean_err}")
+        raise map_gemini_error(e, action="Media upload")
 
     # 6. Extract knowledge using Gemini Multimodal Model
     if on_stage:
@@ -226,10 +267,11 @@ async def extract_media_knowledge(
             )
         )
 
-        if not response or not response.text:
+        resp_text = get_response_text(response)
+        if not resp_text:
             raise HTTPException(status_code=500, detail="Gemini returned an empty response.")
 
-        raw_text = clean_json_text(response.text)
+        raw_text = clean_json_text(resp_text)
         data = json.loads(raw_text)
 
         # Ensure core fields are populated
@@ -268,7 +310,4 @@ async def extract_media_knowledge(
     except HTTPException:
         raise
     except Exception as e:
-        clean_err = sanitize_error_message(e)
-        if "API_KEY_INVALID" in clean_err:
-            raise HTTPException(status_code=401, detail="Google Gemini API Key is invalid.")
-        raise HTTPException(status_code=500, detail=f"Extraction failed: {clean_err}")
+        raise map_gemini_error(e, action="Extraction")

@@ -25,7 +25,7 @@ from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel, Field
 from google import genai
 
-from app.config import UPLOAD_DIR, SAMPLES_DIR, DATA_CACHE_DIR, get_api_key
+from app.config import UPLOAD_DIR, SAMPLES_DIR, DATA_CACHE_DIR, get_api_key, DEFAULT_MODEL
 from app.database import init_db, seed_demo_project_if_needed, get_db
 from app.models.schemas import (
     MediaMetadata,
@@ -50,6 +50,7 @@ from app.services.gemini_extractor import (
     extract_media_knowledge,
     get_cached_result,
     save_cache_result,
+    sanitize_error_message,
 )
 from app.services.qa_service import answer_media_question
 from app.services.pipeline_service import (
@@ -105,6 +106,7 @@ async def health_check():
     return {
         "status": "healthy",
         "service": "VYORA AI Media Knowledge Extractor",
+        "model": DEFAULT_MODEL,
         "has_api_key_configured": has_env_key,
         "active_jobs_count": len(ACTIVE_JOBS),
     }
@@ -115,11 +117,22 @@ async def verify_api_key(req: VerifyKeyRequest):
         return VerifyKeyResponse(valid=False, message="API key is empty")
     try:
         client = genai.Client(api_key=req.api_key.strip())
-        models_pager = client.models.list(config={"page_size": 3})
-        models = list(models_pager)
-        return VerifyKeyResponse(valid=True, message=f"Connected to Gemini API ({len(models)} models available).")
+        try:
+            client.models.get(model=DEFAULT_MODEL)
+            return VerifyKeyResponse(
+                valid=True,
+                message=f"Connected to Google Gemini API. Configured model '{DEFAULT_MODEL}' is active and verified."
+            )
+        except Exception:
+            models_pager = client.models.list(config={"page_size": 3})
+            models = list(models_pager)
+            return VerifyKeyResponse(
+                valid=True,
+                message=f"Connected to Gemini API ({len(models)} models available). Note: '{DEFAULT_MODEL}' may require project billing enablement."
+            )
     except Exception as e:
-        return VerifyKeyResponse(valid=False, message=f"Verification failed: {str(e)}")
+        sanitized = sanitize_error_message(e)
+        return VerifyKeyResponse(valid=False, message=f"Verification failed: {sanitized}")
 
 # ----------------- Projects API -----------------
 @app.get("/api/projects")

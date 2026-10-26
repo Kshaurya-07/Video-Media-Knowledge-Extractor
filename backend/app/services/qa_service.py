@@ -11,6 +11,8 @@ from app.services.gemini_extractor import (
     FILE_REF_REGISTRY,
     clean_json_text,
     sanitize_error_message,
+    map_gemini_error,
+    get_response_text,
 )
 
 QA_SYSTEM_PROMPT = """You are an interactive AI Knowledge Assistant for VYORA AI analyzing a video/audio recording.
@@ -113,18 +115,18 @@ Conversation History:
             )
         )
 
-        clean_text = clean_json_text(response.text)
+        resp_text = get_response_text(response)
+        clean_text = clean_json_text(resp_text)
         data = json.loads(clean_text)
         return ChatResponse(**data)
 
     except json.JSONDecodeError:
         # Fallback if model returned plain text markdown
         return ChatResponse(
-            answer=response.text,
+            answer=get_response_text(response),
             citations=[]
         )
+    except HTTPException:
+        raise
     except Exception as e:
-        sanitized = sanitize_error_message(e)
-        if "API_KEY_INVALID" in sanitized:
-            raise HTTPException(status_code=401, detail="Google Gemini API Key is invalid.")
-        raise HTTPException(status_code=500, detail=f"Failed to generate answer: {sanitized}")
+        raise map_gemini_error(e, action="Q&A generation")
