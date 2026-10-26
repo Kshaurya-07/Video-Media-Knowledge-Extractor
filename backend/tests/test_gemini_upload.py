@@ -252,3 +252,43 @@ def test_get_response_text_handles_both_interfaces():
     mock_ia.output_text = "Analysis text from interaction"
     assert get_response_text(mock_ia) == "Analysis text from interaction"
 
+
+def test_get_response_text_extracts_from_thought_parts():
+    """Verify get_response_text recovers text when Gemini places output in thought parts (e.g. Gemini 2.0 / 3.8)."""
+    from google.genai import types
+
+    p = types.Part(text='{"title": "multimodal"}', thought=True)
+    c = types.Candidate(content=types.Content(parts=[p], role="model"), finish_reason=types.FinishReason.STOP)
+    r = types.GenerateContentResponse(candidates=[c])
+
+    # Note that r.text returns None in google-genai because thought=True
+    assert r.text is None
+    # But get_response_text recovers the text
+    assert get_response_text(r) == '{"title": "multimodal"}'
+
+
+def test_diagnose_empty_response_reports_safety_and_quota():
+    """Verify diagnose_empty_response provides actionable details instead of generic empty error."""
+    from app.services.gemini_extractor import diagnose_empty_response
+    from google.genai import types
+
+    # Safety blocked candidate
+    c = types.Candidate(finish_reason=types.FinishReason.SAFETY)
+    r = types.GenerateContentResponse(candidates=[c])
+    diag = diagnose_empty_response(r, model_name="gemini-3.8-flash")
+    assert "safety filters" in diag.lower()
+
+    # None response
+    diag_none = diagnose_empty_response(None, model_name="gemini-3.8-flash")
+    assert "none" in diag_none.lower()
+
+
+def test_clean_json_text_extracts_embedded_json():
+    """Verify clean_json_text handles thoughts and explanatory text around JSON."""
+    raw = "Thinking process complete.\n```json\n{\"title\": \"Extracted Title\", \"duration_seconds\": 60}\n```\nDone."
+    cleaned = clean_json_text(raw)
+    assert '"title": "Extracted Title"' in cleaned
+    import json
+    data = json.loads(cleaned)
+    assert data["title"] == "Extracted Title"
+

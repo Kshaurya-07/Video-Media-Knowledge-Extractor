@@ -21,6 +21,8 @@ from app.services.gemini_extractor import (
     sanitize_error_message,
     map_gemini_error,
     get_response_text,
+    diagnose_empty_response,
+    STANDARD_SAFETY_SETTINGS,
 )
 
 QA_SYSTEM_PROMPT = """You are an interactive AI Knowledge Assistant for VYORA AI analyzing a video/audio recording.
@@ -131,9 +133,26 @@ Conversation History:
                     system_instruction=QA_SYSTEM_PROMPT,
                     response_mime_type="application/json",
                     temperature=0.2,
+                    max_output_tokens=4096,
+                    safety_settings=STANDARD_SAFETY_SETTINGS,
                 )
             )
+
+            resp_text = get_response_text(response)
+            if not resp_text:
+                diag = diagnose_empty_response(response, model_name=active_model)
+                logger.warning(f"[VYORA AI] Q&A Model '{active_model}' returned empty text ({diag})")
+                if fallback_attempts < max_fallbacks:
+                    fallback_attempts += 1
+                    next_model = blacklist_failed_model(active_model, api_key=resolved_key, reason=diag)
+                    if next_model and next_model != active_model:
+                        active_model = next_model
+                        continue
+                raise HTTPException(status_code=500, detail=diag)
+
             break
+        except HTTPException:
+            raise
         except Exception as e:
             clean_err = sanitize_error_message(e)
             err_lower = clean_err.lower()

@@ -86,18 +86,51 @@ IMPORTANT:
 - Ensure all start_time and end_time values are strictly non-negative numbers.
 """
 
+STANDARD_SAFETY_SETTINGS = [
+    types.SafetySetting(
+        category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
+        threshold=types.HarmBlockThreshold.BLOCK_ONLY_HIGH,
+    ),
+    types.SafetySetting(
+        category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+        threshold=types.HarmBlockThreshold.BLOCK_ONLY_HIGH,
+    ),
+    types.SafetySetting(
+        category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+        threshold=types.HarmBlockThreshold.BLOCK_ONLY_HIGH,
+    ),
+    types.SafetySetting(
+        category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+        threshold=types.HarmBlockThreshold.BLOCK_ONLY_HIGH,
+    ),
+    types.SafetySetting(
+        category=types.HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
+        threshold=types.HarmBlockThreshold.BLOCK_ONLY_HIGH,
+    ),
+]
+
 def clean_json_text(text: str) -> str:
-    """Strip markdown code fence if model returned it."""
+    """Strip markdown code fence and extract valid JSON."""
     if not text:
         return ""
-    text = text.strip()
-    if text.startswith("```json"):
-        text = text[7:]
-    elif text.startswith("```"):
-        text = text[3:]
-    if text.endswith("```"):
-        text = text[:-3]
-    return text.strip()
+    clean = text.strip()
+    if clean.startswith("```json"):
+        clean = clean[7:]
+    elif clean.startswith("```"):
+        clean = clean[3:]
+    if clean.endswith("```"):
+        clean = clean[:-3]
+    clean = clean.strip()
+
+    if clean.startswith("{") and clean.endswith("}"):
+        return clean
+
+    # Look for outer JSON object if wrapped in thoughts or explanation
+    match = re.search(r'(\{[\s\S]*\})', text)
+    if match:
+        return match.group(1).strip()
+
+    return clean
 
 def sanitize_error_message(err: Exception) -> str:
     """Strip any API keys or sensitive auth tokens from error message."""
@@ -147,12 +180,94 @@ def map_gemini_error(e: Exception, action: str = "Extraction", model_name: Optio
 
     return HTTPException(status_code=500, detail=f"{action} failed: {clean_err}")
 
+def diagnose_empty_response(response: Any, model_name: str = "") -> str:
+    """Diagnose the root cause of an empty response from Gemini."""
+    if response is None:
+        return f"Gemini ({model_name}) returned None instead of a response object."
+
+    # Check prompt feedback
+    pf = getattr(response, "prompt_feedback", None)
+    if pf:
+        block_reason = getattr(pf, "block_reason", None)
+        if block_reason:
+            return f"Gemini ({model_name}) blocked media prompt (reason: {block_reason})."
+
+    # Check candidates and finish reasons
+    candidates = getattr(response, "candidates", None)
+    if not candidates or len(candidates) == 0:
+        return f"Gemini ({model_name}) generated 0 candidate responses for this media."
+
+    cand = candidates[0]
+    finish_reason = getattr(cand, "finish_reason", None)
+    if finish_reason:
+        fr_str = str(finish_reason)
+        if "SAFETY" in fr_str:
+            return f"Gemini ({model_name}) response was blocked by safety filters ({fr_str})."
+        if "RECITATION" in fr_str:
+            return f"Gemini ({model_name}) response was blocked by copyright/recitation policy ({fr_str})."
+        if "MAX_TOKENS" in fr_str:
+            return f"Gemini ({model_name}) reached maximum token limit during generation."
+        if "BLOCKLIST" in fr_str or "PROHIBITED" in fr_str:
+            return f"Gemini ({model_name}) response was blocked by content policy ({fr_str})."
+        if "STOP" not in fr_str:
+            return f"Gemini ({model_name}) stopped generation with finish_reason: {fr_str}."
+
+    return f"Gemini ({model_name}) returned an empty response with no content parts."
+
 def get_response_text(response: Any) -> str:
-    """Extract text from either models.generate_content or interactions.create."""
-    if hasattr(response, "text") and response.text:
-        return response.text
-    if hasattr(response, "output_text") and response.output_text:
-        return response.output_text
+    """
+    Robustly extract generated text across all Google GenAI response formats,
+    thinking models (where parts have thought=True), and legacy interactions.
+    """
+    if response is None:
+        return ""
+
+    # 1. Standard text property
+    try:
+        if hasattr(response, "text") and response.text:
+            return response.text
+    except Exception as e:
+        logger.debug(f"Accessing response.text failed: {e}")
+
+    # 2. Output text property (Interactions API)
+    try:
+        if hasattr(response, "output_text") and response.output_text:
+            return response.output_text
+    except Exception:
+        pass
+
+    # 3. Direct inspection of candidates and content parts
+    candidates = getattr(response, "candidates", None)
+    if candidates and isinstance(candidates, list) and len(candidates) > 0:
+        for cand in candidates:
+            content = getattr(cand, "content", None)
+            if not content:
+                continue
+            parts = getattr(content, "parts", None)
+            if not parts or not isinstance(parts, list):
+                continue
+
+            # First pass: standard non-thought text parts
+            non_thought_parts = []
+            for part in parts:
+                p_text = getattr(part, "text", None)
+                is_thought = getattr(part, "thought", False)
+                if isinstance(p_text, str) and p_text and not is_thought:
+                    non_thought_parts.append(p_text)
+
+            if non_thought_parts:
+                return "".join(non_thought_parts)
+
+            # Second pass: if only thought parts are present (thinking models like Gemini 2.0 / 3.8)
+            all_parts = []
+            for part in parts:
+                p_text = getattr(part, "text", None)
+                if isinstance(p_text, str) and p_text:
+                    all_parts.append(p_text)
+
+            if all_parts:
+                return "".join(all_parts)
+
     return ""
 
 def get_cached_result(file_id: str) -> Optional[MediaAnalysisResult]:
@@ -226,7 +341,7 @@ async def extract_media_knowledge(
         FILE_REF_REGISTRY[file_id] = uploaded_file.name
 
         # For video/large files, poll file state until ACTIVE
-        if is_video:
+        if is_video or (hasattr(uploaded_file, "state") and uploaded_file.state):
             max_wait = 360  # up to 6 minutes
             start_wait = time.time()
             if on_stage:
@@ -287,9 +402,35 @@ async def extract_media_knowledge(
                     system_instruction=EXTRACTION_SYSTEM_PROMPT,
                     response_mime_type="application/json",
                     temperature=0.2,
+                    max_output_tokens=8192,
+                    safety_settings=STANDARD_SAFETY_SETTINGS,
                 )
             )
+
+            # Extract generated response text
+            resp_text = get_response_text(response)
+            if not resp_text:
+                diag = diagnose_empty_response(response, model_name=active_model)
+                logger.warning(f"[VYORA AI] Model '{active_model}' returned empty response text ({diag})")
+                if fallback_attempts < max_fallbacks:
+                    fallback_attempts += 1
+                    next_model = blacklist_failed_model(active_model, api_key=resolved_key, reason=diag)
+                    if next_model and next_model != active_model:
+                        fallback_history.append({"from": active_model, "to": next_model, "reason": diag})
+                        logger.warning(f"[VYORA AI] Falling back from '{active_model}' to '{next_model}' (fallback {fallback_attempts}/{max_fallbacks})")
+                        if on_stage:
+                            on_stage("IDENTIFYING_CHAPTERS", 72.0, f"Recovering with fallback model '{format_model_display_name(next_model)}'...")
+                        active_model = next_model
+                        selection_mode = "fallback"
+                        continue
+
+                raise HTTPException(status_code=500, detail=diag)
+
+            # Successfully received content
             break
+
+        except HTTPException:
+            raise
         except Exception as e:
             clean_err = sanitize_error_message(e)
             err_lower = clean_err.lower()
@@ -332,10 +473,6 @@ async def extract_media_knowledge(
             raise map_gemini_error(e, action="Extraction", model_name=active_model)
 
     try:
-        resp_text = get_response_text(response)
-        if not resp_text:
-            raise HTTPException(status_code=500, detail="Gemini returned an empty response.")
-
         raw_text = clean_json_text(resp_text)
         data = json.loads(raw_text)
 
