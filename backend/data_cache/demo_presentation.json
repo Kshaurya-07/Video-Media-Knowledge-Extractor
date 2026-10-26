@@ -1,0 +1,234 @@
+{
+  "file_id": "demo_presentation",
+  "filename": "demo_presentation.wav",
+  "media_type": "video",
+  "duration_seconds": 45.0,
+  "duration_formatted": "00:45",
+  "title": "Architecting Real-Time Multimodal AI Systems with Gemini 2.5",
+  "overview": "A technical keynote exploring modern multimodal architectures, streaming token generation, video-to-knowledge pipelines, and distributed vector indexing.",
+  "executive_summary": "In this technical deep dive, the presenter outlines the core paradigms of high-throughput multimodal intelligence. The session highlights how native multimodal models like Gemini 2.5 unify audio, video, OCR, and reasoning into a single inference pass, eliminating cumbersome multi-stage transcription and vision pipelines.\n\nThe speaker addresses key architectural bottlenecks, specifically latency reduction during video frame sampling and contextual window utilization for long-form video knowledge extraction. Finally, the talk transitions into practical deployment patterns, including vector retrieval over timestamped embeddings and caching strategies for sub-second enterprise Q&A.",
+  "key_takeaways": [
+    "Native multimodal reasoning reduces latency by 4x compared to chained pipeline architectures (ASR + OCR + LLM).",
+    "Timestamped semantic chunking allows precise sub-second video seeking without full re-indexing.",
+    "Gemini Files API supports up to 2 million tokens of context, enabling multi-hour lecture extraction.",
+    "Cost efficiency is maximized through server-side caching of video context for subsequent Q&A queries."
+  ],
+  "chapters": [
+    {
+      "start_time": 0.0,
+      "start_time_formatted": "00:00",
+      "end_time": 12.0,
+      "end_time_formatted": "00:12",
+      "title": "Introduction & The Evolution of Multimodal AI",
+      "summary": "Welcome remarks and an overview of why legacy video pipelines are being replaced by native multimodal LLMs.",
+      "key_moments": [
+        "Speaker introduction and problem formulation",
+        "Comparison between cascading ASR/OCR vs. unified multimodal models"
+      ]
+    },
+    {
+      "start_time": 12.0,
+      "start_time_formatted": "00:12",
+      "end_time": 25.0,
+      "end_time_formatted": "00:25",
+      "title": "Core Architecture: Direct Video Ingestion & Tokenization",
+      "summary": "Detailed exploration of video tokenization, frame rate sampling, and audio spectrogram integration.",
+      "key_moments": [
+        "Dynamic 1 fps frame sampling strategy",
+        "Synchronizing audio waveforms with visual feature vectors"
+      ]
+    },
+    {
+      "start_time": 25.0,
+      "start_time_formatted": "00:25",
+      "end_time": 36.0,
+      "end_time_formatted": "00:36",
+      "title": "Knowledge Extraction & Timestamped Chaptering",
+      "summary": "How structured schemas extract clean chapters, transcripts, visual scenes, and entities in a single inference call.",
+      "key_moments": [
+        "Structured JSON schema definition",
+        "Handling dense technical diagrams and slide OCR"
+      ]
+    },
+    {
+      "start_time": 36.0,
+      "start_time_formatted": "00:36",
+      "end_time": 45.0,
+      "end_time_formatted": "00:45",
+      "title": "Production Deployment & Interactive Q&A",
+      "summary": "Best practices for deploying responsive web dashboards and conversational video RAG with citation links.",
+      "key_moments": [
+        "Context caching with Gemini Files API",
+        "Live Q&A demonstration with sub-second response times",
+        "Closing recommendations and resource links"
+      ]
+    }
+  ],
+  "transcript": [
+    {
+      "start_time": 0.0,
+      "start_time_formatted": "00:00",
+      "end_time": 6.0,
+      "end_time_formatted": "00:06",
+      "speaker": "Dr. Sarah Chen",
+      "text": "Hello everyone, and welcome to this session on architecting real-time multimodal intelligence. Today we're diving into native video understanding."
+    },
+    {
+      "start_time": 6.0,
+      "start_time_formatted": "00:06",
+      "end_time": 12.0,
+      "end_time_formatted": "00:12",
+      "speaker": "Dr. Sarah Chen",
+      "text": "Historically, processing media required orchestrating whisper models, separate OCR engines, and external embeddings. That era is fundamentally shifting."
+    },
+    {
+      "start_time": 12.0,
+      "start_time_formatted": "00:12",
+      "end_time": 19.0,
+      "end_time_formatted": "00:19",
+      "speaker": "Dr. Sarah Chen",
+      "text": "With Gemini 2.5, we feed raw video streams directly into the model. Visual tokens and audio features are processed in an interleaved attention space."
+    },
+    {
+      "start_time": 19.0,
+      "start_time_formatted": "00:19",
+      "end_time": 25.0,
+      "end_time_formatted": "00:25",
+      "speaker": "Dr. Sarah Chen",
+      "text": "This means you get speech transcription, OCR detection on code editors, and visual motion analysis simultaneously with zero loss of temporal context."
+    },
+    {
+      "start_time": 25.0,
+      "start_time_formatted": "00:25",
+      "end_time": 31.0,
+      "end_time_formatted": "00:31",
+      "speaker": "Dr. Sarah Chen",
+      "text": "By constraining generation with strict Pydantic schemas, we instantly produce chronological chapters and topic maps with exact millisecond bounds."
+    },
+    {
+      "start_time": 31.0,
+      "start_time_formatted": "00:31",
+      "end_time": 36.0,
+      "end_time_formatted": "00:36",
+      "speaker": "Dr. Sarah Chen",
+      "text": "Look at the slide on screen: notice how the latency graph drops from 4.2 seconds down to 850 milliseconds when caching context."
+    },
+    {
+      "start_time": 36.0,
+      "start_time_formatted": "00:36",
+      "end_time": 41.0,
+      "end_time_formatted": "00:41",
+      "speaker": "Dr. Sarah Chen",
+      "text": "For enterprise search, users don't just want text summaries—they want to click a timestamp and jump immediately to the exact explanation."
+    },
+    {
+      "start_time": 41.0,
+      "start_time_formatted": "00:41",
+      "end_time": 45.0,
+      "end_time_formatted": "00:45",
+      "speaker": "Dr. Sarah Chen",
+      "text": "Thank you for joining. All code repositories and interactive dashboards are open sourced in our project repository. Let's build together!"
+    }
+  ],
+  "visual_scenes": [
+    {
+      "start_time": 0.0,
+      "start_time_formatted": "00:00",
+      "end_time": 12.0,
+      "end_time_formatted": "00:12",
+      "description": "Title slide with speaker portrait and event branding.",
+      "visual_elements": ["Title Slide", "Speaker Video Feed", "Branding Badge"],
+      "detected_text": ["Architecting Real-Time Multimodal AI Systems", "Dr. Sarah Chen, VP of AI Systems", "Gemini 2.5 Architecture Summit"]
+    },
+    {
+      "start_time": 12.0,
+      "start_time_formatted": "00:12",
+      "end_time": 25.0,
+      "end_time_formatted": "00:25",
+      "description": "System architecture diagram comparing Pipeline (ASR + OCR + LLM) vs Native Multimodal Transformer.",
+      "visual_elements": ["Flowchart", "Latency Benchmark Chart", "Block Diagram"],
+      "detected_text": ["Legacy Cascade vs Unified Foundation Model", "End-to-End Latency: -75%", "Token Interleaving Layer"]
+    },
+    {
+      "start_time": 25.0,
+      "start_time_formatted": "00:25",
+      "end_time": 36.0,
+      "end_time_formatted": "00:36",
+      "description": "Live code demonstration showing FastAPI schema definition and Gemini structured response mapping.",
+      "visual_elements": ["VS Code Window", "JSON Output Viewer", "Terminal"],
+      "detected_text": ["class MediaAnalysisResult(BaseModel)", "response_mime_type='application/json'", "Execution Time: 850ms"]
+    },
+    {
+      "start_time": 36.0,
+      "start_time_formatted": "00:36",
+      "end_time": 45.0,
+      "end_time_formatted": "00:45",
+      "description": "Summary slide with GitHub link, QR code, and interactive dashboard preview.",
+      "visual_elements": ["Interactive Dashboard", "QR Code", "GitHub Badge"],
+      "detected_text": ["github.com/Kshaurya-07/Video-Media-Knowledge-Extractor", "Star & Clone", "Questions & Discussion"]
+    }
+  ],
+  "entities": [
+    {
+      "name": "Gemini 2.5",
+      "category": "Technology",
+      "description": "Next-generation multimodal model from Google supporting native audio, video, and text reasoning.",
+      "mentions_count": 5,
+      "timestamps": ["00:02", "00:13", "00:22", "00:33"]
+    },
+    {
+      "name": "Dr. Sarah Chen",
+      "category": "Person",
+      "description": "Keynote speaker and VP of AI Systems.",
+      "mentions_count": 2,
+      "timestamps": ["00:00", "00:42"]
+    },
+    {
+      "name": "Pydantic Schemas",
+      "category": "Tool",
+      "description": "Data validation and typing library used to enforce structured extraction output from LLMs.",
+      "mentions_count": 2,
+      "timestamps": ["00:26", "00:28"]
+    },
+    {
+      "name": "Timestamped Chunking",
+      "category": "Concept",
+      "description": "Technique for indexing video content by precise temporal markers to enable exact playback seeking.",
+      "mentions_count": 3,
+      "timestamps": ["00:27", "00:37"]
+    },
+    {
+      "name": "Context Caching",
+      "category": "Technology",
+      "description": "Gemini API feature that stores pre-tokenized media context server-side to slash inference latency and cost.",
+      "mentions_count": 2,
+      "timestamps": ["00:32", "00:34"]
+    }
+  ],
+  "action_items": [
+    {
+      "task": "Adopt native multimodal ingestion instead of separate ASR/OCR pipelines for lower latency.",
+      "assignee_or_speaker": "Dr. Sarah Chen",
+      "context": "Recommended architecture pattern for real-time video intelligence",
+      "timestamp": "00:10"
+    },
+    {
+      "task": "Enforce strict JSON schemas during model generation for deterministic backend integration.",
+      "assignee_or_speaker": "Dr. Sarah Chen",
+      "context": "Guarantees reliable downstream parsing in production systems",
+      "timestamp": "00:28"
+    },
+    {
+      "task": "Enable context caching for video recordings exceeding 5 minutes to reduce API latency.",
+      "assignee_or_speaker": "Dr. Sarah Chen",
+      "context": "Production optimization strategy",
+      "timestamp": "00:34"
+    }
+  ],
+  "sentiment_and_tone": {
+    "overall": "Analytical & Visionary",
+    "energy_level": "High",
+    "communication_style": "Concise technical presentation with clear architectural diagrams and actionable recommendations."
+  },
+  "created_at": "2026-10-26T11:45:00.000Z"
+}
