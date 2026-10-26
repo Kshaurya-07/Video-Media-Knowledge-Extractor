@@ -2,14 +2,14 @@
 
 > **Tagline:** *Every Video Holds a Universe of Knowledge.*
 
-An immersive, full-stack, 3D-first multimodal video knowledge extraction platform powered by **Google Gemini 2.5 / 2.0 Flash**, **FastAPI**, **Three.js**, and **React 18 (Vite + Tailwind CSS)**.
+An immersive, full-stack, 3D-first multimodal video knowledge extraction platform powered by **Google Gemini 3.8 Flash**, **FastAPI**, **Three.js**, and **React 18 (Vite + Tailwind CSS)**.
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![React](https://img.shields.io/badge/React-18+-61DAFB?logo=react&logoColor=black)](https://react.dev)
 [![Three.js](https://img.shields.io/badge/Three.js-r183+-black?logo=three.js&logoColor=white)](https://threejs.org)
 [![Vite](https://img.shields.io/badge/Vite-6+-646CFF?logo=vite&logoColor=white)](https://vitejs.dev)
 [![Tailwind CSS](https://img.shields.io/badge/TailwindCSS-3.4+-38B2AC?logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
-[![Google Gemini](https://img.shields.io/badge/Google_Gemini-2.5_Flash-4285F4?logo=google&logoColor=white)](https://aistudio.google.com)
+[![Google Gemini](https://img.shields.io/badge/Google_Gemini-3.8_Flash-4285F4?logo=google&logoColor=white)](https://aistudio.google.com)
 
 ---
 
@@ -192,7 +192,7 @@ npm run dev
 
 ## ⚡ Instant Demo Experience
 
-Open `http://localhost:5173/` and click **"Launch Interactive Demo Keynote"**. The app immediately loads the bundled keynote: *"Architecting Real-Time Multimodal AI Systems with Gemini 2.5"* without requiring an API key.
+Open `http://localhost:5173/` and click **"Launch Interactive Demo Keynote"**. The app immediately loads the bundled keynote: *"Architecting Real-Time Multimodal AI Systems with Gemini 3.8 Flash"* without requiring an API key.
 
 ---
 

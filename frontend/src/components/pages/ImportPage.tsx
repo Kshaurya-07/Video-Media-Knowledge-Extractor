@@ -11,6 +11,8 @@ import {
   uploadMedia,
   startProcessingJob,
   fetchJobStatus,
+  fetchSystemConfig,
+  SystemConfig,
 } from '../../lib/api';
 
 interface ImportPageProps {
@@ -37,8 +39,13 @@ export const ImportPage: React.FC<ImportPageProps> = ({
   const [progressPercent, setProgressPercent] = useState(0);
   const [statusMessage, setStatusMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [systemConfig, setSystemConfig] = useState<SystemConfig | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    fetchSystemConfig().then(setSystemConfig);
+  }, []);
 
   // Poll for background job progress
   useEffect(() => {
@@ -277,7 +284,7 @@ export const ImportPage: React.FC<ImportPageProps> = ({
             {/* Action Bar */}
             <div className="flex items-center justify-between pt-2">
               <span className="text-xs font-mono text-[#71717A]">
-                Target Model: <span className="text-violet-400">Gemini 2.5 Flash</span>
+                Target Model: <span className="text-violet-400">{systemConfig?.display_model || 'Gemini 3.8 Flash'}</span>
               </span>
 
               <button
@@ -317,7 +324,7 @@ export const ImportPage: React.FC<ImportPageProps> = ({
                 {statusMessage || 'Synthesizing knowledge layers...'}
               </p>
               <p className="text-[11px] text-[#71717A]">
-                Gemini 2.5 is interleaving visual frames, waveforms, and OCR layers.
+                {systemConfig?.display_model || 'Gemini 3.8 Flash'} is interleaving visual frames, waveforms, and OCR layers.
               </p>
             </div>
           </div>

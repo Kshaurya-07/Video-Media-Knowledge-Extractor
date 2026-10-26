@@ -15,6 +15,19 @@ def test_health_check_endpoint():
     assert data["status"] == "healthy"
     assert "VYORA AI" in data["service"]
     assert data["model"] == "gemini-3.8-flash"
+    assert data["configured_model"] == "gemini-3.8-flash"
+    assert data["display_model"] == "Gemini 3.8 Flash"
+
+
+def test_config_endpoint():
+    """Verify backend config endpoint returns safe, non-secret model status."""
+    response = client.get("/api/config")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["provider"] == "Google Gemini"
+    assert data["configured_model"] == "gemini-3.8-flash"
+    assert data["display_model"] == "Gemini 3.8 Flash"
+    assert "api_key" not in data
 
 
 def test_verify_key_endpoint_empty():

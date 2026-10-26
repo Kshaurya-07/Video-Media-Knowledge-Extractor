@@ -59,11 +59,15 @@ from app.services.pipeline_service import (
     ACTIVE_JOBS,
 )
 
+import logging
+logger = logging.getLogger("vyora.api")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: initialize database and seed demo
     init_db()
     seed_demo_project_if_needed()
+    logger.info(f"[VYORA AI] Initialized engine. Configured Gemini model: {DEFAULT_MODEL}")
     yield
 
 app = FastAPI(
@@ -99,13 +103,29 @@ class StartProcessingRequest(BaseModel):
     title: Optional[str] = None
     api_key: Optional[str] = None
 
-# ----------------- Health & Keys -----------------
+# ----------------- Health & Configuration -----------------
+@app.get("/api/config")
+async def get_system_config():
+    has_env_key = bool(get_api_key())
+    display_name = "Gemini 3.8 Flash" if DEFAULT_MODEL == "gemini-3.8-flash" else DEFAULT_MODEL.replace("-", " ").title()
+    return {
+        "provider": "Google Gemini",
+        "configured_model": DEFAULT_MODEL,
+        "display_model": display_name,
+        "status": "configured" if has_env_key else "pending_key",
+        "has_api_key_configured": has_env_key,
+    }
+
 @app.get("/api/health")
 async def health_check():
     has_env_key = bool(get_api_key())
+    display_name = "Gemini 3.8 Flash" if DEFAULT_MODEL == "gemini-3.8-flash" else DEFAULT_MODEL.replace("-", " ").title()
     return {
         "status": "healthy",
         "service": "VYORA AI Media Knowledge Extractor",
+        "provider": "Google Gemini",
+        "configured_model": DEFAULT_MODEL,
+        "display_model": display_name,
         "model": DEFAULT_MODEL,
         "has_api_key_configured": has_env_key,
         "active_jobs_count": len(ACTIVE_JOBS),

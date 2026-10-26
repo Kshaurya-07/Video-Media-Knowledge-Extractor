@@ -1,9 +1,12 @@
 import json
 import re
 import time
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional, Callable
+
+logger = logging.getLogger("vyora.extractor")
 
 from google import genai
 from google.genai import types
@@ -256,6 +259,8 @@ async def extract_media_knowledge(
             f"Analyze this {'video' if is_video else 'audio'} file named '{media_path.name}'. "
             "Extract complete knowledge according to the system prompt instructions."
         )
+
+        logger.info(f"[VYORA AI] Running multimodal extraction inference with model='{DEFAULT_MODEL}' for media={media_path.name} (file_id={file_id})")
 
         response = client.models.generate_content(
             model=DEFAULT_MODEL,

@@ -101,7 +101,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
           <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-3.5 text-xs text-slate-400 space-y-2">
             <p>
-              Your key is saved locally in your browser and used securely to communicate with Gemini 2.5.
+              Your key is saved locally in your browser and used securely to communicate with Gemini 3.8 Flash.
             </p>
             <a
               href="https://aistudio.google.com/app/apikey"

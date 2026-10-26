@@ -39,13 +39,81 @@ export function setStoredUser(user: { email: string; name: string } | null): voi
   }
 }
 
-export async function checkBackendHealth(): Promise<{ status: string; has_api_key_configured: boolean }> {
+export interface SystemConfig {
+  provider: string;
+  configured_model: string;
+  display_model: string;
+  status: string;
+  has_api_key_configured?: boolean;
+}
+
+export function formatModelDisplay(modelId?: string): string {
+  if (!modelId) return 'Gemini 3.8 Flash';
+  if (modelId === 'gemini-3.8-flash') return 'Gemini 3.8 Flash';
+  if (modelId === 'gemini-2.0-flash') return 'Gemini 2.0 Flash';
+  if (modelId === 'gemini-1.5-flash') return 'Gemini 1.5 Flash';
+  if (modelId === 'gemini-1.5-pro') return 'Gemini 1.5 Pro';
+  return modelId
+    .replace(/^models\//, '')
+    .replace(/-/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+export async function fetchSystemConfig(): Promise<SystemConfig> {
+  try {
+    const res = await fetch(`${API_BASE}/config`);
+    if (res.ok) {
+      const data = await res.json();
+      return {
+        provider: data.provider || 'Google Gemini',
+        configured_model: data.configured_model || 'gemini-3.8-flash',
+        display_model: data.display_model || formatModelDisplay(data.configured_model),
+        status: data.status || 'configured',
+        has_api_key_configured: data.has_api_key_configured,
+      };
+    }
+  } catch {
+    // fallback to /health
+  }
+
+  try {
+    const health = await fetch(`${API_BASE}/health`);
+    if (health.ok) {
+      const hData = await health.json();
+      const model = hData.configured_model || hData.model || 'gemini-3.8-flash';
+      return {
+        provider: hData.provider || 'Google Gemini',
+        configured_model: model,
+        display_model: hData.display_model || formatModelDisplay(model),
+        status: hData.status || 'healthy',
+        has_api_key_configured: hData.has_api_key_configured,
+      };
+    }
+  } catch {
+    // offline fallback
+  }
+
+  return {
+    provider: 'Google Gemini',
+    configured_model: 'gemini-3.8-flash',
+    display_model: 'Gemini 3.8 Flash',
+    status: 'offline',
+    has_api_key_configured: false,
+  };
+}
+
+export async function checkBackendHealth(): Promise<{
+  status: string;
+  has_api_key_configured: boolean;
+  model?: string;
+  display_model?: string;
+}> {
   try {
     const res = await fetch(`${API_BASE}/health`);
     if (!res.ok) throw new Error('Health check failed');
     return await res.json();
   } catch {
-    return { status: 'offline', has_api_key_configured: false };
+    return { status: 'offline', has_api_key_configured: false, model: 'gemini-3.8-flash', display_model: 'Gemini 3.8 Flash' };
   }
 }
 

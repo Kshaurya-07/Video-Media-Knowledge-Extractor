@@ -1,8 +1,11 @@
 import json
+import logging
 from typing import List, Optional
 from google import genai
 from google.genai import types
 from fastapi import HTTPException
+
+logger = logging.getLogger("vyora.qa")
 
 from app.config import DEFAULT_MODEL, get_api_key
 from app.models.schemas import ChatMessage, ChatResponse, TimestampCitation
@@ -103,6 +106,8 @@ Conversation History:
 
     user_prompt += f"\nUser Question: {question}\n\nAnswer in the requested JSON format."
     contents.append(user_prompt)
+
+    logger.info(f"[VYORA AI] Running grounded Q&A inference with model='{DEFAULT_MODEL}' for file_id={file_id}")
 
     try:
         response = client.models.generate_content(

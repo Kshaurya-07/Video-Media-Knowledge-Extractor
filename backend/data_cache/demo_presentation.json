@@ -4,9 +4,9 @@
   "media_type": "video",
   "duration_seconds": 45.0,
   "duration_formatted": "00:45",
-  "title": "Architecting Real-Time Multimodal AI Systems with Gemini 2.5",
+  "title": "Architecting Real-Time Multimodal AI Systems with Gemini 3.8 Flash",
   "overview": "A technical keynote exploring modern multimodal architectures, streaming token generation, video-to-knowledge pipelines, and distributed vector indexing.",
-  "executive_summary": "In this technical deep dive, the presenter outlines the core paradigms of high-throughput multimodal intelligence. The session highlights how native multimodal models like Gemini 2.5 unify audio, video, OCR, and reasoning into a single inference pass, eliminating cumbersome multi-stage transcription and vision pipelines.\n\nThe speaker addresses key architectural bottlenecks, specifically latency reduction during video frame sampling and contextual window utilization for long-form video knowledge extraction. Finally, the talk transitions into practical deployment patterns, including vector retrieval over timestamped embeddings and caching strategies for sub-second enterprise Q&A.",
+  "executive_summary": "In this technical deep dive, the presenter outlines the core paradigms of high-throughput multimodal intelligence. The session highlights how native multimodal models like Gemini 3.8 Flash unify audio, video, OCR, and reasoning into a single inference pass, eliminating cumbersome multi-stage transcription and vision pipelines.\n\nThe speaker addresses key architectural bottlenecks, specifically latency reduction during video frame sampling and contextual window utilization for long-form video knowledge extraction. Finally, the talk transitions into practical deployment patterns, including vector retrieval over timestamped embeddings and caching strategies for sub-second enterprise Q&A.",
   "key_takeaways": [
     "Native multimodal reasoning reduces latency by 4x compared to chained pipeline architectures (ASR + OCR + LLM).",
     "Timestamped semantic chunking allows precise sub-second video seeking without full re-indexing.",
@@ -87,7 +87,7 @@
       "end_time": 19.0,
       "end_time_formatted": "00:19",
       "speaker": "Dr. Sarah Chen",
-      "text": "With Gemini 2.5, we feed raw video streams directly into the model. Visual tokens and audio features are processed in an interleaved attention space."
+      "text": "With Gemini 3.8 Flash, we feed raw video streams directly into the model. Visual tokens and audio features are processed in an interleaved attention space."
     },
     {
       "start_time": 19.0,
@@ -138,7 +138,7 @@
       "end_time_formatted": "00:12",
       "description": "Title slide with speaker portrait and event branding.",
       "visual_elements": ["Title Slide", "Speaker Video Feed", "Branding Badge"],
-      "detected_text": ["Architecting Real-Time Multimodal AI Systems", "Dr. Sarah Chen, VP of AI Systems", "Gemini 2.5 Architecture Summit"]
+      "detected_text": ["Architecting Real-Time Multimodal AI Systems", "Dr. Sarah Chen, VP of AI Systems", "Gemini 3.8 Flash Architecture Summit"]
     },
     {
       "start_time": 12.0,
@@ -170,7 +170,7 @@
   ],
   "entities": [
     {
-      "name": "Gemini 2.5",
+      "name": "Gemini 3.8 Flash",
       "category": "Technology",
       "description": "Next-generation multimodal model from Google supporting native audio, video, and text reasoning.",
       "mentions_count": 5,

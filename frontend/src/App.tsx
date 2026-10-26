@@ -13,8 +13,9 @@ import {
   getStoredApiKey,
   getStoredUser,
   setStoredUser,
-  checkBackendHealth,
   fetchProjectDetails,
+  fetchSystemConfig,
+  SystemConfig,
 } from './lib/api';
 
 import {
@@ -52,6 +53,7 @@ export const App: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [hasApiKey, setHasApiKey] = useState(false);
+  const [systemConfig, setSystemConfig] = useState<SystemConfig | null>(null);
 
   // Initial session & key hydration
   useEffect(() => {
@@ -61,11 +63,12 @@ export const App: React.FC = () => {
     const storedKey = getStoredApiKey();
     if (storedKey) {
       setHasApiKey(true);
-    } else {
-      checkBackendHealth().then((h) => {
-        if (h.has_api_key_configured) setHasApiKey(true);
-      });
     }
+
+    fetchSystemConfig().then((cfg) => {
+      setSystemConfig(cfg);
+      if (cfg.has_api_key_configured) setHasApiKey(true);
+    });
   }, []);
 
   const handleOpenProject = async (projectId: string) => {
@@ -272,7 +275,11 @@ export const App: React.FC = () => {
                   }`}
                 >
                   <Key className="w-3 h-3" />
-                  <span>{hasApiKey ? 'Gemini 2.5 Active' : 'Enter API Key'}</span>
+                  <span>
+                    {hasApiKey
+                      ? `${systemConfig?.display_model || 'Gemini 3.8 Flash'} Active`
+                      : 'Enter API Key'}
+                  </span>
                   {hasApiKey ? (
                     <CheckCircle className="w-3 h-3 text-emerald-400" />
                   ) : (
