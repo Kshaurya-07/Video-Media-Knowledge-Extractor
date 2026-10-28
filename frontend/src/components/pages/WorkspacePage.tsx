@@ -328,7 +328,7 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
           {/* Synchronized Media Player */}
           <VideoPlayer
             ref={playerRef}
-            src={getMediaStreamUrl(analysis.file_id)}
+            src={analysis.source_url || getMediaStreamUrl(analysis.file_id)}
             mediaType={analysis.media_type}
             title={analysis.title}
             onTimeUpdate={(t) => setCurrentTime(t)}

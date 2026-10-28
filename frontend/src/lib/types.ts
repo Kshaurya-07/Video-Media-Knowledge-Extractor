@@ -67,6 +67,7 @@ export interface MediaAnalysisResult {
   created_at: string;
   selected_model?: string;
   model_selection_mode?: 'automatic' | 'preferred_override' | 'fallback';
+  source_url?: string;
 }
 
 export interface ProjectSummary {
@@ -75,6 +76,7 @@ export interface ProjectSummary {
   description: string;
   media_type: 'video' | 'audio';
   filename: string;
+  source_url?: string;
   duration_seconds: number;
   duration_formatted: string;
   status: 'QUEUED' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
@@ -137,6 +139,7 @@ export type ProcessingStage =
 
 export interface ProcessingJobStatus {
   job_id: string;
+  project_id?: string;
   stage: ProcessingStage;
   progress_percent: number;
   message: string;

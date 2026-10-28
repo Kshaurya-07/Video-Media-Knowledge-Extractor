@@ -25,6 +25,7 @@ def init_db():
             media_type TEXT NOT NULL,
             filename TEXT NOT NULL,
             file_path TEXT NOT NULL,
+            source_url TEXT,
             duration_seconds REAL DEFAULT 0,
             duration_formatted TEXT DEFAULT '00:00',
             status TEXT DEFAULT 'COMPLETED', -- 'QUEUED', 'PROCESSING', 'COMPLETED', 'FAILED'
@@ -185,6 +186,8 @@ def init_db():
         proj_cols = [row["name"] for row in cursor.fetchall()]
         if "selected_model" not in proj_cols:
             cursor.execute("ALTER TABLE projects ADD COLUMN selected_model TEXT")
+        if "source_url" not in proj_cols:
+            cursor.execute("ALTER TABLE projects ADD COLUMN source_url TEXT")
         
         conn.commit()
 

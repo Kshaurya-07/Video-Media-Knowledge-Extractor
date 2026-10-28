@@ -305,17 +305,39 @@ async def extract_media_knowledge(
             detail="Google Gemini API Key is required. Please set GEMINI_API_KEY in environment or configure it in Settings."
         )
 
-    # 3. Locate media file
+    # 3. Locate media file or inspect remote stream project
+    source_url = None
+    media_display_name = "media_file.mp4"
+    is_video = True
+    media_path = None
     try:
-        media_path = get_media_path(file_id)
+        from app.database import get_db
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT source_url, filename, media_type FROM projects WHERE id = ?", (file_id,))
+            prow = cursor.fetchone()
+            if prow:
+                source_url = prow["source_url"]
+                if prow["filename"]:
+                    media_display_name = prow["filename"]
+                is_video = prow["media_type"] == "video"
     except Exception as e:
-        raise HTTPException(status_code=404, detail=f"Media file not found: {str(e)}")
+        logger.debug(f"[VYORA AI] Project lookup info: {e}")
 
-    if not media_path.exists() or media_path.stat().st_size == 0:
-        raise HTTPException(status_code=400, detail="Media file is empty or missing on disk.")
+    is_youtube = bool(source_url and ("youtube.com" in source_url or "youtu.be" in source_url))
 
-    mime_type = get_media_mime_type(media_path)
-    is_video = mime_type.startswith("video/")
+    if not is_youtube:
+        try:
+            media_path = get_media_path(file_id)
+        except Exception as e:
+            raise HTTPException(status_code=404, detail=f"Media file not found: {str(e)}")
+
+        if not media_path.exists() or media_path.stat().st_size == 0:
+            raise HTTPException(status_code=400, detail="Media file is empty or missing on disk.")
+
+        mime_type = get_media_mime_type(media_path)
+        is_video = mime_type.startswith("video/")
+        media_display_name = media_path.name
 
     # 4. Initialize Google GenAI client
     try:
@@ -324,53 +346,64 @@ async def extract_media_knowledge(
         clean_err = sanitize_error_message(e)
         raise HTTPException(status_code=400, detail=f"Failed to initialize Gemini Client: {clean_err}")
 
-    # 5. Upload file to Gemini Files API
-    # Note: google-genai SDK requires passing mime_type via types.UploadFileConfig
-    if on_stage:
-        on_stage("UPLOADING", 25.0, f"Uploading {media_path.name} to Gemini Files API...")
+    # 5. Connect media to Gemini Multimodal Engine
+    uploaded_content = None
 
-    try:
-        upload_config = types.UploadFileConfig(
-            mime_type=mime_type,
-            display_name=media_path.name
+    if is_youtube:
+        if on_stage:
+            on_stage("UPLOADING", 30.0, f"Connecting Gemini multimodal engine to YouTube stream ({source_url})...")
+        uploaded_content = types.Part.from_uri(
+            file_uri=source_url,
+            mime_type="video/mp4"
         )
-        uploaded_file = client.files.upload(
-            file=str(media_path),
-            config=upload_config
-        )
-        FILE_REF_REGISTRY[file_id] = uploaded_file.name
+    else:
+        # Note: google-genai SDK requires passing mime_type via types.UploadFileConfig
+        if on_stage:
+            on_stage("UPLOADING", 25.0, f"Uploading {media_path.name} to Gemini Files API...")
 
-        # For video/large files, poll file state until ACTIVE
-        if is_video or (hasattr(uploaded_file, "state") and uploaded_file.state):
-            max_wait = 360  # up to 6 minutes
-            start_wait = time.time()
-            if on_stage:
-                on_stage("EXTRACTING_AUDIO", 40.0, "Gemini processing video frames & audio tracks...")
+        try:
+            upload_config = types.UploadFileConfig(
+                mime_type=mime_type,
+                display_name=media_path.name
+            )
+            uploaded_file = client.files.upload(
+                file=str(media_path),
+                config=upload_config
+            )
+            uploaded_content = uploaded_file
+            FILE_REF_REGISTRY[file_id] = uploaded_file.name
 
-            while uploaded_file.state and (
-                uploaded_file.state == types.FileState.PROCESSING or
-                str(uploaded_file.state).endswith("PROCESSING")
-            ):
-                if time.time() - start_wait > max_wait:
-                    raise HTTPException(status_code=504, detail="Video processing timed out on Gemini Files API")
-                time.sleep(3)
-                uploaded_file = client.files.get(name=uploaded_file.name)
+            # For video/large files, poll file state until ACTIVE
+            if is_video or (hasattr(uploaded_file, "state") and uploaded_file.state):
+                max_wait = 360  # up to 6 minutes
+                start_wait = time.time()
                 if on_stage:
-                    elapsed = int(time.time() - start_wait)
-                    pct = min(40.0 + (elapsed / max_wait) * 25.0, 65.0)
-                    on_stage("TRANSCRIBING", pct, f"Ingesting multimodal temporal features ({elapsed}s)...")
+                    on_stage("EXTRACTING_AUDIO", 40.0, "Gemini processing video frames & audio tracks...")
 
-            if uploaded_file.state and (
-                uploaded_file.state == types.FileState.FAILED or
-                str(uploaded_file.state).endswith("FAILED")
-            ):
-                err_info = getattr(uploaded_file, 'error', 'Internal error')
-                raise HTTPException(status_code=500, detail=f"Gemini failed to process media: {err_info}")
+                while uploaded_file.state and (
+                    uploaded_file.state == types.FileState.PROCESSING or
+                    str(uploaded_file.state).endswith("PROCESSING")
+                ):
+                    if time.time() - start_wait > max_wait:
+                        raise HTTPException(status_code=504, detail="Video processing timed out on Gemini Files API")
+                    time.sleep(3)
+                    uploaded_file = client.files.get(name=uploaded_file.name)
+                    if on_stage:
+                        elapsed = int(time.time() - start_wait)
+                        pct = min(40.0 + (elapsed / max_wait) * 25.0, 65.0)
+                        on_stage("TRANSCRIBING", pct, f"Ingesting multimodal temporal features ({elapsed}s)...")
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise map_gemini_error(e, action="Media upload")
+                if uploaded_file.state and (
+                    uploaded_file.state == types.FileState.FAILED or
+                    str(uploaded_file.state).endswith("FAILED")
+                ):
+                    err_info = getattr(uploaded_file, 'error', 'Internal error')
+                    raise HTTPException(status_code=500, detail=f"Gemini failed to process media: {err_info}")
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise map_gemini_error(e, action="Media upload")
 
     # 6. Resolve Model (Automatic Discovery or Configured)
     active_model = selected_model_override
@@ -379,7 +412,7 @@ async def extract_media_knowledge(
         active_model, selection_mode, _ = get_active_model_selection(resolved_key)
 
     prompt = (
-        f"Analyze this {'video' if is_video else 'audio'} file named '{media_path.name}'. "
+        f"Analyze this {'video' if is_video else 'audio'} content '{media_display_name}'. "
         "Extract complete knowledge according to the system prompt instructions."
     )
 
@@ -397,7 +430,7 @@ async def extract_media_knowledge(
         try:
             response = client.models.generate_content(
                 model=active_model,
-                contents=[uploaded_file, prompt],
+                contents=[uploaded_content, prompt],
                 config=types.GenerateContentConfig(
                     system_instruction=EXTRACTION_SYSTEM_PROMPT,
                     response_mime_type="application/json",
@@ -478,11 +511,13 @@ async def extract_media_knowledge(
 
         # Ensure core fields are populated
         data["file_id"] = file_id
-        data["filename"] = media_path.name
+        data["filename"] = media_display_name
         data["media_type"] = "video" if is_video else "audio"
         data["created_at"] = datetime.now().isoformat()
         data["selected_model"] = active_model
         data["model_selection_mode"] = selection_mode
+        if source_url:
+            data["source_url"] = source_url
         
         if "duration_seconds" not in data or not data["duration_seconds"]:
             data["duration_seconds"] = 120.0

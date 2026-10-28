@@ -1,4 +1,4 @@
-import React, { useRef, useState, forwardRef, useImperativeHandle } from 'react';
+import React, { useRef, useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import {
   Play,
   Pause,
@@ -8,6 +8,7 @@ import {
   VolumeX,
   Maximize,
   Music,
+  ExternalLink,
 } from 'lucide-react';
 
 export interface VideoPlayerHandle {
@@ -24,10 +25,21 @@ interface VideoPlayerProps {
   onTimeUpdate?: (currentTime: number) => void;
 }
 
+export function extractYouTubeId(url: string): string | null {
+  if (!url) return null;
+  const match = url.match(
+    /(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|shorts\/))([\w-]{11})/i
+  );
+  return match ? match[1] : null;
+}
+
 export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
   ({ src, mediaType, title, onTimeUpdate }, ref) => {
     const mediaRef = useRef<HTMLVideoElement | HTMLAudioElement | null>(null);
+    const iframeRef = useRef<HTMLIFrameElement | null>(null);
     const containerRef = useRef<HTMLDivElement | null>(null);
+
+    const youtubeId = extractYouTubeId(src);
 
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
@@ -36,29 +48,107 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     const [isMuted, setIsMuted] = useState(false);
     const [playbackRate, setPlaybackRate] = useState(1);
 
+    // Send postMessage command to YouTube iframe
+    const sendYouTubeCommand = (func: string, args: any[] = []) => {
+      if (iframeRef.current && iframeRef.current.contentWindow) {
+        iframeRef.current.contentWindow.postMessage(
+          JSON.stringify({ event: 'command', func, args }),
+          '*'
+        );
+      }
+    };
+
+    // YouTube iframe postMessage listener for reactive synchronization
+    useEffect(() => {
+      if (!youtubeId) return;
+
+      const handleWindowMessage = (e: MessageEvent) => {
+        try {
+          const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+          if (data && data.event === 'infoDelivery' && data.info) {
+            if (typeof data.info.currentTime === 'number') {
+              const ct = data.info.currentTime;
+              setCurrentTime(ct);
+              onTimeUpdate?.(ct);
+            }
+            if (typeof data.info.duration === 'number' && data.info.duration > 0) {
+              setDuration(data.info.duration);
+            }
+            if (typeof data.info.playerState === 'number') {
+              // 1 = playing, 2 = paused, 0 = ended
+              if (data.info.playerState === 1) setIsPlaying(true);
+              else if (data.info.playerState === 2 || data.info.playerState === 0) {
+                setIsPlaying(false);
+              }
+            }
+          }
+        } catch {
+          // Ignore non-json postMessages
+        }
+      };
+
+      window.addEventListener('message', handleWindowMessage);
+
+      // Ping iframe to establish event subscription
+      const handshake = setInterval(() => {
+        sendYouTubeCommand('listening');
+      }, 1000);
+
+      return () => {
+        window.removeEventListener('message', handleWindowMessage);
+        clearInterval(handshake);
+      };
+    }, [youtubeId, onTimeUpdate]);
+
     useImperativeHandle(ref, () => ({
       seekTo: (seconds: number) => {
-        if (mediaRef.current) {
-          const clamped = Math.max(0, Math.min(seconds, duration || 99999));
+        const clamped = Math.max(0, Math.min(seconds, duration || 99999));
+        setCurrentTime(clamped);
+        onTimeUpdate?.(clamped);
+
+        if (youtubeId) {
+          sendYouTubeCommand('seekTo', [clamped, true]);
+          sendYouTubeCommand('playVideo');
+          setIsPlaying(true);
+        } else if (mediaRef.current) {
           mediaRef.current.currentTime = clamped;
-          setCurrentTime(clamped);
-          onTimeUpdate?.(clamped);
           mediaRef.current.play().catch(() => {});
           setIsPlaying(true);
         }
       },
       play: () => {
-        mediaRef.current?.play().catch(() => {});
-        setIsPlaying(true);
+        if (youtubeId) {
+          sendYouTubeCommand('playVideo');
+          setIsPlaying(true);
+        } else if (mediaRef.current) {
+          mediaRef.current.play().catch(() => {});
+          setIsPlaying(true);
+        }
       },
       pause: () => {
-        mediaRef.current?.pause();
-        setIsPlaying(false);
+        if (youtubeId) {
+          sendYouTubeCommand('pauseVideo');
+          setIsPlaying(false);
+        } else if (mediaRef.current) {
+          mediaRef.current.pause();
+          setIsPlaying(false);
+        }
       },
-      getCurrentTime: () => mediaRef.current?.currentTime || 0,
+      getCurrentTime: () => currentTime,
     }));
 
     const togglePlay = () => {
+      if (youtubeId) {
+        if (isPlaying) {
+          sendYouTubeCommand('pauseVideo');
+          setIsPlaying(false);
+        } else {
+          sendYouTubeCommand('playVideo');
+          setIsPlaying(true);
+        }
+        return;
+      }
+
       if (!mediaRef.current) return;
       if (isPlaying) {
         mediaRef.current.pause();
@@ -71,26 +161,37 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
 
     const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
       const targetTime = parseFloat(e.target.value);
-      if (mediaRef.current) {
+      setCurrentTime(targetTime);
+      onTimeUpdate?.(targetTime);
+
+      if (youtubeId) {
+        sendYouTubeCommand('seekTo', [targetTime, true]);
+      } else if (mediaRef.current) {
         mediaRef.current.currentTime = targetTime;
-        setCurrentTime(targetTime);
-        onTimeUpdate?.(targetTime);
       }
     };
 
     const skipTime = (delta: number) => {
-      if (mediaRef.current) {
-        const nextTime = Math.max(0, Math.min(mediaRef.current.currentTime + delta, duration));
+      const nextTime = Math.max(0, Math.min(currentTime + delta, duration || 99999));
+      setCurrentTime(nextTime);
+      onTimeUpdate?.(nextTime);
+
+      if (youtubeId) {
+        sendYouTubeCommand('seekTo', [nextTime, true]);
+      } else if (mediaRef.current) {
         mediaRef.current.currentTime = nextTime;
-        setCurrentTime(nextTime);
-        onTimeUpdate?.(nextTime);
       }
     };
 
     const toggleMute = () => {
-      if (!mediaRef.current) return;
-      mediaRef.current.muted = !isMuted;
-      setIsMuted(!isMuted);
+      const nextMuted = !isMuted;
+      setIsMuted(nextMuted);
+
+      if (youtubeId) {
+        sendYouTubeCommand(nextMuted ? 'mute' : 'unMute');
+      } else if (mediaRef.current) {
+        mediaRef.current.muted = nextMuted;
+      }
     };
 
     const cyclePlaybackRate = () => {
@@ -98,7 +199,10 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       const nextIdx = (rates.indexOf(playbackRate) + 1) % rates.length;
       const nextRate = rates[nextIdx];
       setPlaybackRate(nextRate);
-      if (mediaRef.current) {
+
+      if (youtubeId) {
+        sendYouTubeCommand('setPlaybackRate', [nextRate]);
+      } else if (mediaRef.current) {
         mediaRef.current.playbackRate = nextRate;
       }
     };
@@ -126,28 +230,66 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         className="group relative bg-[#0A0A0A] border border-[#27272A] rounded-2xl overflow-hidden shadow-2xl flex flex-col justify-between"
       >
         {/* Media Frame */}
-        <div className="relative aspect-video w-full flex items-center justify-center bg-black/60 overflow-hidden">
-          {mediaType === 'video' ? (
-            <video
-              ref={mediaRef as any}
-              src={src}
-              className="w-full h-full object-contain cursor-pointer"
-              onClick={togglePlay}
-              onTimeUpdate={() => {
-                if (mediaRef.current) {
-                  const t = mediaRef.current.currentTime;
-                  setCurrentTime(t);
-                  onTimeUpdate?.(t);
-                }
-              }}
-              onLoadedMetadata={() => {
-                if (mediaRef.current) {
-                  setDuration(mediaRef.current.duration || 0);
-                }
-              }}
-              onEnded={() => setIsPlaying(false)}
-              playsInline
-            />
+        <div className="relative aspect-video w-full flex items-center justify-center bg-black/80 overflow-hidden">
+          {youtubeId ? (
+            <div className="relative w-full h-full">
+              <iframe
+                ref={iframeRef}
+                id="vyora-yt-player"
+                src={`https://www.youtube.com/embed/${youtubeId}?enablejsapi=1&origin=${typeof window !== 'undefined' ? window.location.origin : ''}&modestbranding=1&rel=0`}
+                className="w-full h-full border-0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                title={title || 'YouTube Stream'}
+              />
+              <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                <a
+                  href={`https://www.youtube.com/watch?v=${youtubeId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/80 hover:bg-black text-[11px] text-[#A1A1AA] hover:text-white border border-[#27272A] shadow-md backdrop-blur-md transition-colors"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  <span>Open in YouTube</span>
+                </a>
+              </div>
+            </div>
+          ) : mediaType === 'video' ? (
+            <>
+              <video
+                ref={mediaRef as any}
+                src={src}
+                className="w-full h-full object-contain cursor-pointer"
+                onClick={togglePlay}
+                onTimeUpdate={() => {
+                  if (mediaRef.current) {
+                    const t = mediaRef.current.currentTime;
+                    setCurrentTime(t);
+                    onTimeUpdate?.(t);
+                  }
+                }}
+                onLoadedMetadata={() => {
+                  if (mediaRef.current) {
+                    setDuration(mediaRef.current.duration || 0);
+                  }
+                }}
+                onEnded={() => setIsPlaying(false)}
+                playsInline
+              />
+              {/* Quick Play/Pause Overlay Icon on Hover for HTML5 Video */}
+              <button
+                onClick={togglePlay}
+                className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto"
+              >
+                <div className="p-4 rounded-full bg-violet-600/90 hover:bg-violet-500 text-white shadow-xl backdrop-blur-md transform scale-95 group-hover:scale-100 transition-transform">
+                  {isPlaying ? (
+                    <Pause className="w-8 h-8" />
+                  ) : (
+                    <Play className="w-8 h-8 translate-x-0.5 fill-current" />
+                  )}
+                </div>
+              </button>
+            </>
           ) : (
             <div className="flex flex-col items-center justify-center p-8 text-center space-y-4">
               <audio
@@ -176,16 +318,6 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
               </div>
             </div>
           )}
-
-          {/* Quick Play/Pause Overlay Icon on Hover */}
-          <button
-            onClick={togglePlay}
-            className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity"
-          >
-            <div className="p-4 rounded-full bg-violet-600/90 hover:bg-violet-500 text-white shadow-xl backdrop-blur-md transform scale-95 group-hover:scale-100 transition-transform">
-              {isPlaying ? <Pause className="w-8 h-8" /> : <Play className="w-8 h-8 translate-x-0.5 fill-current" />}
-            </div>
-          </button>
         </div>
 
         {/* Video Player Controls Bar */}
@@ -259,10 +391,15 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                   onChange={(e) => {
                     const val = parseFloat(e.target.value);
                     setVolume(val);
-                    if (mediaRef.current) {
+                    setIsMuted(val === 0);
+
+                    if (youtubeId) {
+                      sendYouTubeCommand('setVolume', [val * 100]);
+                      if (val === 0) sendYouTubeCommand('mute');
+                      else sendYouTubeCommand('unMute');
+                    } else if (mediaRef.current) {
                       mediaRef.current.volume = val;
                       mediaRef.current.muted = val === 0;
-                      setIsMuted(val === 0);
                     }
                   }}
                   className="w-16 h-1 bg-[#1F1F23] rounded-lg appearance-none cursor-pointer accent-violet-400"
@@ -280,15 +417,13 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                 {playbackRate}x
               </button>
 
-              {mediaType === 'video' && (
-                <button
-                  onClick={toggleFullscreen}
-                  className="p-2 rounded-lg hover:bg-[#151515] text-[#A1A1AA] hover:text-white transition-colors"
-                  title="Fullscreen"
-                >
-                  <Maximize className="w-4 h-4" />
-                </button>
-              )}
+              <button
+                onClick={toggleFullscreen}
+                className="p-2 rounded-lg hover:bg-[#151515] text-[#A1A1AA] hover:text-white transition-colors"
+                title="Fullscreen"
+              >
+                <Maximize className="w-4 h-4" />
+              </button>
             </div>
           </div>
         </div>

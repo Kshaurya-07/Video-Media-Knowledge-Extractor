@@ -62,7 +62,7 @@ export const ImportPage: React.FC<ImportPageProps> = ({
           clearInterval(interval);
           setIsProcessing(false);
           setTimeout(() => {
-            onProcessingFinished(projectId || 'demo_presentation');
+            onProcessingFinished(job.project_id || projectId || 'demo_presentation');
           }, 1000);
         } else if (job.stage === 'FAILED') {
           clearInterval(interval);
@@ -246,7 +246,7 @@ export const ImportPage: React.FC<ImportPageProps> = ({
               /* URL Input Box */
               <div className="p-8 rounded-3xl bg-[#050505] border border-[#27272A] space-y-4 text-left">
                 <label className="block text-xs font-medium text-[#D4D4D8]">
-                  Video Stream URL
+                  Online Video Link or Media Stream URL
                 </label>
                 <div className="relative">
                   <LinkIcon className="w-4 h-4 text-[#71717A] absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -254,12 +254,12 @@ export const ImportPage: React.FC<ImportPageProps> = ({
                     type="url"
                     value={videoUrl}
                     onChange={(e) => setVideoUrl(e.target.value)}
-                    placeholder="https://example.com/lecture-recording.mp4"
+                    placeholder="https://www.youtube.com/watch?v=... or https://example.com/lecture.mp4"
                     className="w-full pl-10 pr-4 py-3 bg-[#111111] border border-[#27272A] rounded-xl text-xs text-white placeholder:text-[#71717A] focus:outline-none focus:border-violet-500 transition-colors"
                   />
                 </div>
                 <p className="text-[11px] text-[#71717A]">
-                  Direct media stream links or public lecture URLs will be ingested and mapped.
+                  Supports YouTube videos, public conference lectures, and direct MP4/WebM/audio media streams (protected by SSRF defense).
                 </p>
               </div>
             )}

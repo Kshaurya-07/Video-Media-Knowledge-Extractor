@@ -25,7 +25,7 @@ from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel, Field
 from google import genai
 
-from app.config import UPLOAD_DIR, SAMPLES_DIR, DATA_CACHE_DIR, get_api_key, DEFAULT_MODEL
+from app.config import BASE_DIR, UPLOAD_DIR, SAMPLES_DIR, DATA_CACHE_DIR, get_api_key, DEFAULT_MODEL
 from app.database import init_db, seed_demo_project_if_needed, get_db
 from app.models.schemas import (
     MediaMetadata,
@@ -63,6 +63,10 @@ from app.services.pipeline_service import (
     process_media_background_job,
     get_active_job_for_project,
     ACTIVE_JOBS,
+)
+from app.services.url_ingestion_service import (
+    ingest_remote_media_url,
+    validate_url_security,
 )
 
 import logging
@@ -108,6 +112,10 @@ class StartProcessingRequest(BaseModel):
     url: Optional[str] = None
     title: Optional[str] = None
     api_key: Optional[str] = None
+
+class IngestUrlRequest(BaseModel):
+    url: str
+    title: Optional[str] = None
 
 # ----------------- Health & Configuration -----------------
 @app.get("/api/system/model-status")
@@ -188,6 +196,8 @@ async def list_projects(user_id: str = "default_user"):
                 "description": r["description"],
                 "media_type": r["media_type"],
                 "filename": r["filename"],
+                "source_url": r["source_url"] if "source_url" in r.keys() else None,
+                "selected_model": r["selected_model"] if "selected_model" in r.keys() else None,
                 "duration_seconds": r["duration_seconds"],
                 "duration_formatted": r["duration_formatted"],
                 "status": r["status"],
@@ -276,6 +286,8 @@ async def get_project_details(project_id: str):
             "file_id": proj["id"],
             "filename": proj["filename"],
             "media_type": proj["media_type"],
+            "source_url": proj["source_url"] if "source_url" in proj.keys() else None,
+            "selected_model": proj["selected_model"] if "selected_model" in proj.keys() else None,
             "duration_seconds": proj["duration_seconds"],
             "duration_formatted": proj["duration_formatted"],
             "title": proj["title"],
@@ -488,6 +500,11 @@ async def upload_media(file: UploadFile = File(...)):
         file_size_bytes=file_size,
     )
 
+@app.post("/api/ingest/url")
+async def ingest_media_url_endpoint(req: IngestUrlRequest):
+    """Securely validate and ingest remote video links (YouTube or direct streams) with SSRF defense."""
+    return await ingest_remote_media_url(raw_url=req.url, title_hint=req.title)
+
 @app.post("/api/process/start")
 async def start_processing(
     req: StartProcessingRequest,
@@ -499,7 +516,8 @@ async def start_processing(
     file_id = req.file_id
     if not file_id:
         if req.url:
-            file_id = "demo_presentation"  # Route demo sample or download
+            ingest_result = await ingest_remote_media_url(raw_url=req.url, title_hint=req.title)
+            file_id = ingest_result["file_id"]
         else:
             raise HTTPException(status_code=400, detail="file_id or url is required")
 
@@ -534,7 +552,12 @@ async def start_processing(
     }
 
     # Dispatch background worker
-    media_path = get_media_path(file_id)
+    media_path = None
+    try:
+        media_path = get_media_path(file_id)
+    except Exception:
+        pass
+
     background_tasks.add_task(
         process_media_background_job,
         job_id=job_id,
@@ -616,7 +639,19 @@ async def chat_with_media(
 @app.api_route("/api/media/{file_id}", methods=["GET", "HEAD"])
 @app.api_route("/api/stream/{file_id}", methods=["GET", "HEAD"])
 async def stream_media(file_id: str, request: Request):
-    media_path = get_media_path(file_id)
+    try:
+        media_path = get_media_path(file_id)
+    except HTTPException as e:
+        # If local media not found on disk, check if it's a remote URL/YouTube project
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT source_url FROM projects WHERE id = ?", (file_id,))
+            row = cursor.fetchone()
+            if row and row["source_url"]:
+                from fastapi.responses import RedirectResponse
+                return RedirectResponse(url=row["source_url"], status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+        raise e
+
     range_header = request.headers.get("range")
     
     stream_generator, start, end, file_size, content_type = range_stream(media_path, range_header)
@@ -654,3 +689,26 @@ async def list_sample_media():
                 "size": f.stat().st_size
             })
     return samples
+
+# Optional unified SPA static assets serving
+dist_dir = BASE_DIR.parent / "dist"
+if not dist_dir.exists():
+    dist_dir = BASE_DIR / "dist"
+
+if dist_dir.exists() and (dist_dir / "index.html").exists():
+    from fastapi.staticfiles import StaticFiles
+    from fastapi.responses import FileResponse
+
+    assets_dir = dist_dir / "assets"
+    if assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa_frontend(full_path: str):
+        if full_path.startswith("api"):
+            raise HTTPException(status_code=404, detail="API route not found")
+        requested = dist_dir / full_path
+        if requested.exists() and requested.is_file():
+            return FileResponse(requested)
+        return FileResponse(dist_dir / "index.html")
+

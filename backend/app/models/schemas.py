@@ -47,6 +47,7 @@ class MediaMetadata(BaseModel):
     duration_seconds: float
     duration_formatted: str
     file_size_bytes: int
+    source_url: Optional[str] = None
 
 class MediaAnalysisResult(BaseModel):
     file_id: str
@@ -67,6 +68,7 @@ class MediaAnalysisResult(BaseModel):
     created_at: str
     selected_model: Optional[str] = Field(None, description="Gemini model selected for analysis")
     model_selection_mode: Optional[str] = Field("automatic", description="Model selection mode (automatic or preferred_override)")
+    source_url: Optional[str] = Field(None, description="Optional remote stream/YouTube URL")
 
 class ChatMessage(BaseModel):
     role: str  # 'user' or 'assistant'
