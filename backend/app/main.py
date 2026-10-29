@@ -141,10 +141,11 @@ async def get_system_config(x_gemini_api_key: Optional[str] = Header(None)):
         "compatible_models_count": payload["compatible_models_count"],
     }
 
-@app.get("/api/health")
+@app.get("/health", tags=["Health"])
+@app.get("/api/health", tags=["Health"])
 async def health_check():
     has_env_key = bool(get_api_key())
-    selected_model, selection_mode, _ = get_active_model_selection()
+    selected_model, selection_mode, _ = get_active_model_selection(allow_network=False)
     return {
         "status": "healthy",
         "service": "VYORA AI Media Knowledge Extractor",
@@ -157,6 +158,16 @@ async def health_check():
         "has_api_key_configured": has_env_key,
         "active_jobs_count": len(ACTIVE_JOBS),
     }
+
+@app.get("/ready", tags=["Health"])
+@app.get("/api/ready", tags=["Health"])
+async def readiness_check():
+    try:
+        with get_db() as db:
+            db.execute("SELECT 1").fetchone()
+        return {"status": "ready", "database": "connected"}
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Database not ready: {str(e)}")
 
 @app.post("/api/verify-key", response_model=VerifyKeyResponse)
 async def verify_api_key(req: VerifyKeyRequest):
@@ -711,4 +722,15 @@ if dist_dir.exists() and (dist_dir / "index.html").exists():
         if requested.exists() and requested.is_file():
             return FileResponse(requested)
         return FileResponse(dist_dir / "index.html")
+else:
+    @app.get("/", tags=["Health"])
+    async def root():
+        return {
+            "service": "VYORA AI Backend",
+            "status": "healthy",
+            "version": "2.0.0",
+            "docs": "/docs",
+            "health": "/api/health",
+            "ready": "/api/ready"
+        }
 

@@ -9,14 +9,38 @@ client = TestClient(app)
 
 def test_health_check_endpoint():
     """Verify backend health endpoint responds with system status."""
-    response = client.get("/api/health")
+    for path in ["/api/health", "/health"]:
+        response = client.get(path)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "healthy"
+        assert "VYORA AI" in data["service"]
+        assert data["model"] == "gemini-3.8-flash"
+        assert data["configured_model"] == "gemini-3.8-flash"
+        assert data["display_model"] == "Gemini 3.8 Flash"
+
+
+def test_readiness_endpoints():
+    """Verify backend readiness endpoints respond with 200 OK and database connectivity."""
+    for path in ["/api/ready", "/ready"]:
+        response = client.get(path)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ready"
+        assert data["database"] == "connected"
+
+
+def test_root_endpoint():
+    """Verify backend root endpoint responds with 200 OK (either SPA HTML or JSON health)."""
+    response = client.get("/")
     assert response.status_code == 200
-    data = response.json()
-    assert data["status"] == "healthy"
-    assert "VYORA AI" in data["service"]
-    assert data["model"] == "gemini-3.8-flash"
-    assert data["configured_model"] == "gemini-3.8-flash"
-    assert data["display_model"] == "Gemini 3.8 Flash"
+    content_type = response.headers.get("content-type", "")
+    if "text/html" in content_type:
+        assert "<!doctype html>" in response.text.lower()
+    else:
+        data = response.json()
+        assert data["service"] == "VYORA AI Backend"
+        assert data["status"] == "healthy"
 
 
 def test_config_endpoint():

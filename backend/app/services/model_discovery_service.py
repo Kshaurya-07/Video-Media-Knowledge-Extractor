@@ -2,6 +2,7 @@ import os
 import time
 import hashlib
 import logging
+import concurrent.futures
 from typing import Dict, List, Optional, Set, Tuple, Any
 from datetime import datetime, timezone
 
@@ -205,11 +206,23 @@ def discover_available_models(
     discovered: List[DiscoveredModelInfo] = []
 
     try:
-        # Call Google GenAI SDK models.list with pagination config
-        models_pager = client.models.list(config={"page_size": 50})
+        # Call Google GenAI SDK models.list with pagination config using a bounded worker
+        def _fetch_all_models():
+            items = []
+            models_pager = client.models.list(config={"page_size": 50})
+            for m in models_pager:
+                items.append(m)
+            return items
+
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(_fetch_all_models)
+                raw_models = future.result(timeout=4.0)
+        except concurrent.futures.TimeoutError:
+            raise TimeoutError("models.list API call timed out after 4.0 seconds")
         
-        # Pager is iterable and automatically follows next_page tokens
-        for m in models_pager:
+        # Process discovered models
+        for m in raw_models:
             raw_name = getattr(m, "name", "") or ""
             model_id = normalize_model_id(raw_name)
             if not model_id:
@@ -319,7 +332,8 @@ def discover_available_models(
 
 def get_active_model_selection(
     api_key: Optional[str] = None,
-    force_refresh: bool = False
+    force_refresh: bool = False,
+    allow_network: bool = True,
 ) -> Tuple[str, str, ModelCacheEntry]:
     """
     Get the currently active selected model and selection mode for inference.
@@ -338,6 +352,21 @@ def get_active_model_selection(
             entry.message = "No Gemini API key provided. Please configure an API key in Settings."
             entry.last_checked = datetime.now(timezone.utc).isoformat()
             _MODEL_CACHE[key_hash] = entry
+        return entry.selected_model, entry.selection_mode, entry
+
+    entry = _MODEL_CACHE.get(key_hash)
+    if not allow_network:
+        if not entry:
+            entry = ModelCacheEntry(key_hash)
+            entry.selected_model = DEFAULT_MODEL
+            entry.selection_mode = "automatic"
+            entry.status = "configured"
+            entry.message = "Gemini API key configured."
+            entry.last_checked = datetime.now(timezone.utc).isoformat()
+            _MODEL_CACHE[key_hash] = entry
+        return entry.selected_model, entry.selection_mode, entry
+
+    if not force_refresh and entry and (time.time() - entry.timestamp) < MODEL_CACHE_TTL_SECONDS and entry.timestamp > 0:
         return entry.selected_model, entry.selection_mode, entry
 
     try:
