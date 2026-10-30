@@ -20,12 +20,76 @@ from app.services.media_service import format_seconds, get_media_mime_type
 # In-memory job tracker for immediate reactivity
 ACTIVE_JOBS: Dict[str, Dict[str, Any]] = {}
 
+# Stale job timeout in seconds (default: 5 minutes)
+JOB_INACTIVITY_TIMEOUT_SECONDS = 300.0
+
+def recover_all_stale_jobs() -> int:
+    """
+    On startup or health recovery, mark any in-flight jobs in the database
+    that are not actively held in ACTIVE_JOBS as FAILED so they never block users.
+    """
+    active_ids = list(ACTIVE_JOBS.keys())
+    with get_db() as conn:
+        cursor = conn.cursor()
+        if active_ids:
+            placeholders = ",".join("?" for _ in active_ids)
+            cursor.execute(f"""
+                UPDATE processing_jobs
+                SET stage = 'FAILED',
+                    progress_percent = 0.0,
+                    message = 'Processing was interrupted by a service restart. Ready to retry.',
+                    error_message = 'Service restarted while job was in-flight.',
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE stage NOT IN ('COMPLETED', 'FAILED')
+                  AND job_id NOT IN ({placeholders})
+            """, active_ids)
+        else:
+            cursor.execute("""
+                UPDATE processing_jobs
+                SET stage = 'FAILED',
+                    progress_percent = 0.0,
+                    message = 'Processing was interrupted by a service restart. Ready to retry.',
+                    error_message = 'Service restarted while job was in-flight.',
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE stage NOT IN ('COMPLETED', 'FAILED')
+            """)
+        count = cursor.rowcount
+        conn.commit()
+        return count
+
 def get_active_job_for_project(project_id: str) -> Optional[Dict[str, Any]]:
-    """Check in-memory and database for an active (non-terminal) processing job."""
+    """
+    Check in-memory and database for an actively running processing job.
+    Accurately detects abandoned or stale jobs (e.g. from service restarts)
+    and transitions them to FAILED so a fresh attempt is never blocked.
+    """
+    now = time.time()
+    stale_in_memory = []
+
+    # 1. Inspect in-memory active jobs
     for jid, job in ACTIVE_JOBS.items():
         if job.get("project_id") == project_id and job.get("stage") not in ("COMPLETED", "FAILED"):
-            return job
+            last_update = job.get("updated_at", 0)
+            if (now - last_update) > JOB_INACTIVITY_TIMEOUT_SECONDS:
+                stale_in_memory.append(jid)
+            else:
+                # Genuinely active job running in current process
+                return job
 
+    # Clean up any stalled in-memory jobs
+    for jid in stale_in_memory:
+        update_job_status(
+            jid,
+            "FAILED",
+            0.0,
+            "Processing stalled or timed out after 5 minutes of inactivity. Ready to retry.",
+            error="Worker inactivity timeout",
+            project_id=project_id,
+        )
+        if jid in ACTIVE_JOBS:
+            del ACTIVE_JOBS[jid]
+
+    # 2. Inspect database for unfinalized jobs from prior runs
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -38,7 +102,21 @@ def get_active_job_for_project(project_id: str) -> Optional[Dict[str, Any]]:
         )
         row = cursor.fetchone()
         if row:
-            return dict(row)
+            # Job is in DB but NOT running in current process memory: it was abandoned by a restart
+            stale_id = row["job_id"]
+            cursor.execute("""
+                UPDATE processing_jobs
+                SET stage = 'FAILED',
+                    progress_percent = 0.0,
+                    message = 'Previous processing attempt was interrupted (server restart). Ready to retry.',
+                    error_message = 'Job was interrupted before completion. You can restart processing.',
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE job_id = ?
+            """, (stale_id,))
+            conn.commit()
+            # Return None so start_processing can immediately initiate a fresh job
+            return None
+
     return None
 
 def update_job_status(
@@ -109,10 +187,13 @@ async def process_media_background_job(job_id: str, project_id: str, file_path: 
                 selected_model_override=resolved_model,
             )
         except Exception as e:
-            # If no API key or API call fails, check if we have a demo cache or fallback
-            cached = get_cached_result(project_id)
-            if cached:
-                analysis = cached
+            # Only allow demo cache for the pre-seeded demo presentation; real user projects fail truthfully
+            if project_id == "demo_presentation":
+                cached = get_cached_result(project_id)
+                if cached:
+                    analysis = cached
+                else:
+                    raise e
             else:
                 raise e
 

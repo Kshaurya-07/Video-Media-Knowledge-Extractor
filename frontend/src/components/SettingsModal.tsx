@@ -1,23 +1,34 @@
 import React, { useState } from 'react';
-import { X, Key, ExternalLink, Check, AlertCircle, Loader2 } from 'lucide-react';
-import { verifyApiKey, setStoredApiKey, getStoredApiKey } from '../lib/api';
+import { X, Key, ExternalLink, Check, AlertCircle, Loader2, ShieldCheck, Trash2 } from 'lucide-react';
+import { verifyApiKey, setStoredApiKey, getStoredApiKey, clearStoredApiKey } from '../lib/api';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
+  serverKeyConfigured?: boolean;
   onKeySaved: (key: string) => void;
+  onKeyCleared?: () => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
   onClose,
+  serverKeyConfigured = false,
   onKeySaved,
+  onKeyCleared,
 }) => {
   const [apiKey, setApiKey] = useState(getStoredApiKey());
   const [isVerifying, setIsVerifying] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   if (!isOpen) return null;
+
+  const handleClearKey = () => {
+    clearStoredApiKey();
+    setApiKey('');
+    setStatusMessage({ type: 'success', text: 'Custom personal key removed. Using server configuration.' });
+    if (onKeyCleared) onKeyCleared();
+  };
 
   const handleVerifyAndSave = async () => {
     if (!apiKey.trim()) {
@@ -31,7 +42,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       if (res.valid) {
         setStoredApiKey(apiKey.trim());
         onKeySaved(apiKey.trim());
-        setStatusMessage({ type: 'success', text: 'API Key verified and saved successfully!' });
+        setStatusMessage({ type: 'success', text: res.message || 'API Key verified and saved successfully!' });
         setTimeout(() => {
           onClose();
         }, 1200);
@@ -67,16 +78,51 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         <div className="mt-5 space-y-4">
+          {/* Server Key Status Banner */}
+          {serverKeyConfigured ? (
+            <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-start gap-2.5">
+              <ShieldCheck className="w-4 h-4 mt-0.5 shrink-0 text-emerald-400" />
+              <div>
+                <p className="font-semibold text-emerald-200">Server API Key Configured</p>
+                <p className="text-emerald-300/80 mt-0.5">
+                  A system-wide Google Gemini API Key is configured in the backend environment. You can extract video summaries and chat without entering a personal key.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-2.5">
+              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-amber-400" />
+              <div>
+                <p className="font-semibold text-amber-200">No Server API Key Configured</p>
+                <p className="text-amber-300/80 mt-0.5">
+                  Set <code className="bg-amber-950/50 px-1 py-0.5 rounded text-amber-200">GEMINI_API_KEY</code> in Render Environment Variables, or enter your personal Google AI Studio key below.
+                </p>
+              </div>
+            </div>
+          )}
+
           <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1.5">
-              Google Gemini API Key
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-medium text-slate-300">
+                {serverKeyConfigured ? 'Custom API Key (Optional Override)' : 'Personal Google Gemini API Key'}
+              </label>
+              {apiKey && (
+                <button
+                  type="button"
+                  onClick={handleClearKey}
+                  className="text-[11px] text-red-400 hover:text-red-300 flex items-center gap-1"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  <span>Clear</span>
+                </button>
+              )}
+            </div>
             <div className="relative">
               <input
                 type="password"
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
-                placeholder="AIzaSy..."
+                placeholder={serverKeyConfigured ? 'Optional override (AIzaSy...)' : 'AIzaSy...'}
                 className="w-full px-3.5 py-2.5 bg-slate-900/90 border border-slate-700/80 rounded-xl text-slate-100 placeholder:text-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 font-mono"
               />
             </div>
@@ -119,7 +165,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               onClick={onClose}
               className="px-4 py-2 rounded-xl text-xs font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-800/80 transition-colors"
             >
-              Cancel
+              Close
             </button>
             <button
               onClick={handleVerifyAndSave}

@@ -364,14 +364,18 @@ async def extract_media_knowledge(
         try:
             upload_config = types.UploadFileConfig(
                 mime_type=mime_type,
-                display_name=media_path.name
+                display_name=media_path.name[:100]
             )
             uploaded_file = client.files.upload(
                 file=str(media_path),
                 config=upload_config
             )
+            if not uploaded_file or not getattr(uploaded_file, "name", None):
+                raise HTTPException(status_code=500, detail="Gemini Files API upload failed (empty response received).")
+
             uploaded_content = uploaded_file
-            FILE_REF_REGISTRY[file_id] = uploaded_file.name
+            file_name = uploaded_file.name
+            FILE_REF_REGISTRY[file_id] = file_name
 
             # For video/large files, poll file state until ACTIVE
             if is_video or (hasattr(uploaded_file, "state") and uploaded_file.state):
@@ -380,20 +384,22 @@ async def extract_media_knowledge(
                 if on_stage:
                     on_stage("EXTRACTING_AUDIO", 40.0, "Gemini processing video frames & audio tracks...")
 
-                while uploaded_file.state and (
+                while uploaded_file and uploaded_file.state and (
                     uploaded_file.state == types.FileState.PROCESSING or
                     str(uploaded_file.state).endswith("PROCESSING")
                 ):
                     if time.time() - start_wait > max_wait:
                         raise HTTPException(status_code=504, detail="Video processing timed out on Gemini Files API")
                     time.sleep(3)
-                    uploaded_file = client.files.get(name=uploaded_file.name)
+                    refreshed = client.files.get(name=file_name)
+                    if refreshed:
+                        uploaded_file = refreshed
                     if on_stage:
                         elapsed = int(time.time() - start_wait)
                         pct = min(40.0 + (elapsed / max_wait) * 25.0, 65.0)
                         on_stage("TRANSCRIBING", pct, f"Ingesting multimodal temporal features ({elapsed}s)...")
 
-                if uploaded_file.state and (
+                if uploaded_file and uploaded_file.state and (
                     uploaded_file.state == types.FileState.FAILED or
                     str(uploaded_file.state).endswith("FAILED")
                 ):
@@ -420,9 +426,10 @@ async def extract_media_knowledge(
     fallback_attempts = 0
     fallback_history = []
     response = None
+    media_name_display = media_path.name if media_path else media_display_name
 
     while True:
-        logger.info(f"[VYORA AI] Running multimodal extraction inference with model='{active_model}' for media={media_path.name} (file_id={file_id})")
+        logger.info(f"[VYORA AI] Running multimodal extraction inference with model='{active_model}' for media={media_name_display} (file_id={file_id})")
         if on_stage:
             disp_name = format_model_display_name(active_model)
             on_stage("IDENTIFYING_CHAPTERS", 70.0, f"Synthesizing chapters & knowledge using {disp_name}...")

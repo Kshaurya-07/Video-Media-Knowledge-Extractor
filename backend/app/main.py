@@ -58,10 +58,13 @@ from app.services.model_discovery_service import (
     get_active_model_selection,
     invalidate_model_cache,
     format_model_display_name,
+    verify_gemini_key_lightweight,
 )
 from app.services.pipeline_service import (
     process_media_background_job,
     get_active_job_for_project,
+    recover_all_stale_jobs,
+    update_job_status,
     ACTIVE_JOBS,
 )
 from app.services.url_ingestion_service import (
@@ -77,6 +80,9 @@ async def lifespan(app: FastAPI):
     # Startup: initialize database and seed demo
     init_db()
     seed_demo_project_if_needed()
+    recovered = recover_all_stale_jobs()
+    if recovered > 0:
+        logger.info(f"[VYORA AI] Cleaned up {recovered} orphaned processing jobs from prior runs.")
     logger.info(f"[VYORA AI] Initialized engine. Configured Gemini model: {DEFAULT_MODEL}")
     yield
 
@@ -130,6 +136,9 @@ async def refresh_model_cache(x_gemini_api_key: Optional[str] = Header(None)):
 @app.get("/api/config")
 async def get_system_config(x_gemini_api_key: Optional[str] = Header(None)):
     payload = get_model_status_payload(api_key=x_gemini_api_key)
+    server_key = get_api_key()
+    has_server_key = bool(server_key and server_key.strip())
+    has_user_key = bool(x_gemini_api_key and x_gemini_api_key.strip())
     return {
         "provider": "Google Gemini",
         "selection_mode": payload["selection_mode"],
@@ -138,6 +147,8 @@ async def get_system_config(x_gemini_api_key: Optional[str] = Header(None)):
         "display_model": payload["display_model"],
         "status": payload["status"],
         "has_api_key_configured": payload["has_api_key"],
+        "server_api_key_configured": has_server_key,
+        "user_api_key_provided": has_user_key,
         "compatible_models_count": payload["compatible_models_count"],
     }
 
@@ -172,16 +183,11 @@ async def readiness_check():
 @app.post("/api/verify-key", response_model=VerifyKeyResponse)
 async def verify_api_key(req: VerifyKeyRequest):
     if not req.api_key or not req.api_key.strip():
-        return VerifyKeyResponse(valid=False, message="API key is empty")
+        return VerifyKeyResponse(valid=False, message="API key is empty. Please enter a valid Gemini API key.")
+    clean_key = req.api_key.strip()
     try:
-        payload = get_model_status_payload(api_key=req.api_key.strip())
-        if payload["status"] in ("connected", "configured"):
-            return VerifyKeyResponse(
-                valid=True,
-                message=f"Connected to Google Gemini API. {payload['compatible_models_count']} compatible models discovered. Active: '{payload['display_model']}'."
-            )
-        else:
-            return VerifyKeyResponse(valid=False, message=payload.get("message") or "Verification failed")
+        is_valid, msg, model_name = verify_gemini_key_lightweight(clean_key)
+        return VerifyKeyResponse(valid=is_valid, message=msg)
     except Exception as e:
         sanitized = sanitize_error_message(e)
         return VerifyKeyResponse(valid=False, message=f"Verification failed: {sanitized}")
@@ -532,27 +538,37 @@ async def start_processing(
         else:
             raise HTTPException(status_code=400, detail="file_id or url is required")
 
-    # Prevent duplicate active jobs for the same media file
+    # Verify that media project exists in database
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM projects WHERE id = ?", (file_id,))
+        proj = cursor.fetchone()
+        if not proj:
+            raise HTTPException(status_code=404, detail=f"Media project '{file_id}' not found.")
+
+    # Prevent duplicate active jobs for the same media file (recovers any stale/abandoned job)
     existing_job = get_active_job_for_project(file_id)
     if existing_job:
         return {
             "job_id": existing_job.get("job_id"),
             "project_id": file_id,
             "stage": existing_job.get("stage"),
-            "message": existing_job.get("message", "Processing is already active for this media.")
+            "message": existing_job.get("message", "Processing is actively in-flight for this media.")
         }
 
     job_id = str(uuid.uuid4())[:10]
 
-    # Record job in database
+    # Record job in database and update project status
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("""
         INSERT INTO processing_jobs (job_id, project_id, stage, progress_percent, message)
         VALUES (?, ?, ?, ?, ?)
         """, (job_id, file_id, "QUEUED", 5.0, "Job queued in VYORA background queue..."))
+        cursor.execute("UPDATE projects SET status = 'PROCESSING' WHERE id = ?", (file_id,))
         conn.commit()
 
+    import time
     ACTIVE_JOBS[job_id] = {
         "job_id": job_id,
         "project_id": file_id,
@@ -560,6 +576,7 @@ async def start_processing(
         "progress_percent": 5.0,
         "message": "Job queued in VYORA background queue...",
         "error_message": None,
+        "updated_at": time.time(),
     }
 
     # Dispatch background worker
@@ -581,8 +598,21 @@ async def start_processing(
 
 @app.get("/api/jobs/{job_id}")
 async def get_job_status(job_id: str):
+    import time
     if job_id in ACTIVE_JOBS:
-        return ACTIVE_JOBS[job_id]
+        job = ACTIVE_JOBS[job_id]
+        # Inactivity timeout guard (5 minutes)
+        if job.get("stage") not in ("COMPLETED", "FAILED") and (time.time() - job.get("updated_at", 0) > 300.0):
+            update_job_status(
+                job_id,
+                "FAILED",
+                0.0,
+                "Processing timed out or stalled. Ready to retry.",
+                error="Worker timeout exceeded",
+            )
+            del ACTIVE_JOBS[job_id]
+        else:
+            return job
 
     with get_db() as conn:
         cursor = conn.cursor()
@@ -590,7 +620,23 @@ async def get_job_status(job_id: str):
         row = cursor.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Job not found")
-        return dict(row)
+        job_data = dict(row)
+        # If job is in DB as in-flight but not in ACTIVE_JOBS, it was abandoned on server restart
+        if job_data.get("stage") not in ("COMPLETED", "FAILED"):
+            cursor.execute("""
+                UPDATE processing_jobs
+                SET stage = 'FAILED',
+                    progress_percent = 0.0,
+                    message = 'Processing stopped unexpectedly (server restart). Ready to retry.',
+                    error_message = 'Job interrupted by server restart. Please retry.',
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE job_id = ?
+            """, (job_id,))
+            conn.commit()
+            job_data["stage"] = "FAILED"
+            job_data["message"] = "Processing stopped unexpectedly (server restart). Ready to retry."
+            job_data["error_message"] = "Job interrupted by server restart. Please retry."
+        return job_data
 
 # ----------------- Media Streaming & Chat -----------------
 @app.post("/api/extract/{file_id}", response_model=MediaAnalysisResult)

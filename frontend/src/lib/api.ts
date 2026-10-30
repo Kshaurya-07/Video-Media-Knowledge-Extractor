@@ -12,7 +12,7 @@ import { KnowledgeGraphNode, KnowledgeGraphLink } from '../components/3d/Knowled
 function resolveApiBase(): string {
   let url = import.meta.env.VITE_API_URL;
   if (!url || typeof url !== 'string') return '/api';
-  url = url.trim();
+  url = url.trim().replace(/\/+$/, '');
   if (!url) return '/api';
   if (!url.startsWith('http://') && !url.startsWith('https://')) {
     if (url.includes('localhost') || url.includes('127.0.0.1')) {
@@ -21,7 +21,11 @@ function resolveApiBase(): string {
       url = `https://${url}`;
     }
   }
-  return `${url.replace(/\/+$/, '')}/api`;
+  // Strip trailing /api to prevent /api/api duplication
+  if (url.endsWith('/api')) {
+    return url;
+  }
+  return `${url}/api`;
 }
 
 const API_BASE = resolveApiBase();
@@ -32,6 +36,10 @@ export function getStoredApiKey(): string {
 
 export function setStoredApiKey(key: string): void {
   localStorage.setItem('vyora_gemini_api_key', key.trim());
+}
+
+export function clearStoredApiKey(): void {
+  localStorage.removeItem('vyora_gemini_api_key');
 }
 
 export function getStoredUser(): { email: string; name: string } | null {
@@ -58,6 +66,8 @@ export interface SystemConfig {
   display_model: string;
   status: string;
   has_api_key_configured?: boolean;
+  server_api_key_configured?: boolean;
+  user_api_key_provided?: boolean;
 }
 
 export function formatModelDisplay(modelId?: string): string {
@@ -82,7 +92,9 @@ export async function fetchSystemConfig(): Promise<SystemConfig> {
         configured_model: data.configured_model || 'gemini-3.8-flash',
         display_model: data.display_model || formatModelDisplay(data.configured_model),
         status: data.status || 'configured',
-        has_api_key_configured: data.has_api_key_configured,
+        has_api_key_configured: Boolean(data.has_api_key_configured),
+        server_api_key_configured: Boolean(data.server_api_key_configured),
+        user_api_key_provided: Boolean(data.user_api_key_provided),
       };
     }
   } catch {
@@ -99,7 +111,9 @@ export async function fetchSystemConfig(): Promise<SystemConfig> {
         configured_model: model,
         display_model: hData.display_model || formatModelDisplay(model),
         status: hData.status || 'healthy',
-        has_api_key_configured: hData.has_api_key_configured,
+        has_api_key_configured: Boolean(hData.has_api_key_configured),
+        server_api_key_configured: Boolean(hData.has_api_key_configured),
+        user_api_key_provided: false,
       };
     }
   } catch {
@@ -112,6 +126,8 @@ export async function fetchSystemConfig(): Promise<SystemConfig> {
     display_model: 'Gemini 3.8 Flash',
     status: 'offline',
     has_api_key_configured: false,
+    server_api_key_configured: false,
+    user_api_key_provided: false,
   };
 }
 
@@ -130,6 +146,8 @@ export interface ModelStatusResponse {
   display_model: string;
   status: 'connected' | 'configured' | 'pending_key' | 'offline' | 'error' | 'no_compatible_model';
   has_api_key: boolean;
+  server_api_key_configured?: boolean;
+  user_api_key_provided?: boolean;
   model_verified: boolean;
   last_checked?: string;
   compatible_models_count?: number;
@@ -148,7 +166,12 @@ export async function fetchModelStatus(): Promise<ModelStatusResponse> {
     const res = await fetch(`${API_BASE}/system/model-status`, { headers });
     if (res.ok) {
       const data = await res.json();
-      return data;
+      return {
+        ...data,
+        has_api_key: Boolean(data.has_api_key),
+        server_api_key_configured: Boolean(data.server_api_key_configured),
+        user_api_key_provided: Boolean(data.user_api_key_provided || customKey),
+      };
     }
   } catch {
     // fallback to /config
@@ -164,9 +187,11 @@ export async function fetchModelStatus(): Promise<ModelStatusResponse> {
         selected_model: data.selected_model || data.configured_model || 'gemini-3.8-flash',
         configured_model: data.configured_model || 'gemini-3.8-flash',
         display_model: data.display_model || formatModelDisplay(data.configured_model),
-        status: data.status === 'configured' ? 'configured' : 'pending_key',
+        status: data.status === 'connected' ? 'connected' : data.status === 'configured' ? 'configured' : 'pending_key',
         has_api_key: Boolean(data.has_api_key_configured),
-        model_verified: true,
+        server_api_key_configured: Boolean(data.server_api_key_configured),
+        user_api_key_provided: Boolean(data.user_api_key_provided || customKey),
+        model_verified: Boolean(data.has_api_key_configured),
         compatible_models_count: data.compatible_models_count || 1,
       };
     }
@@ -182,6 +207,8 @@ export async function fetchModelStatus(): Promise<ModelStatusResponse> {
     display_model: 'Gemini 3.8 Flash',
     status: 'offline',
     has_api_key: Boolean(customKey),
+    server_api_key_configured: false,
+    user_api_key_provided: Boolean(customKey),
     model_verified: false,
     message: 'Backend service unreachable',
   };
@@ -220,12 +247,26 @@ export async function checkBackendHealth(): Promise<{
 }
 
 export async function verifyApiKey(apiKey: string): Promise<{ valid: boolean; message: string }> {
-  const res = await fetch(`${API_BASE}/verify-key`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ api_key: apiKey }),
-  });
-  return await res.json();
+  try {
+    const res = await fetch(`${API_BASE}/verify-key`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ api_key: apiKey }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => null);
+      return {
+        valid: false,
+        message: err?.detail || `Verification request failed (${res.status}: ${res.statusText})`,
+      };
+    }
+    return await res.json();
+  } catch (err: any) {
+    return {
+      valid: false,
+      message: err.message || 'Network error connecting to backend service.',
+    };
+  }
 }
 
 export async function fetchProjects(): Promise<ProjectSummary[]> {

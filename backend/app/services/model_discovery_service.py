@@ -445,6 +445,9 @@ def get_model_status_payload(api_key: Optional[str] = None) -> Dict[str, Any]:
     Guarantees no API secrets, credentials, or private keys are exposed.
     """
     resolved_key = get_api_key(api_key)
+    server_key = get_api_key()
+    has_server_key = bool(server_key and server_key.strip())
+    has_user_key = bool(api_key and api_key.strip())
     has_key = bool(resolved_key and resolved_key.strip())
     selected_model, selection_mode, cache_entry = get_active_model_selection(resolved_key)
 
@@ -466,9 +469,49 @@ def get_model_status_payload(api_key: Optional[str] = None) -> Dict[str, Any]:
         "display_model": format_model_display_name(selected_model),
         "status": cache_entry.status,
         "has_api_key": has_key,
+        "server_api_key_configured": has_server_key,
+        "user_api_key_provided": has_user_key,
         "model_verified": cache_entry.status in ("connected", "configured"),
         "last_checked": cache_entry.last_checked or datetime.now(timezone.utc).isoformat(),
         "compatible_models_count": len(cache_entry.compatible_models),
         "candidate_models": candidates,
         "message": cache_entry.message,
     }
+
+def verify_gemini_key_lightweight(api_key: str) -> Tuple[bool, str, Optional[str]]:
+    """
+    Fast, bounded API-key verification (< 4.0s).
+    Does NOT perform exhaustive model list pagination.
+    Distinguishes invalid keys, quota exhaustion, network errors, and timeouts.
+    Returns (is_valid, message, model_name).
+    """
+    clean_key = api_key.strip()
+    if not clean_key:
+        return False, "API key is empty.", None
+
+    try:
+        def _check():
+            client = genai.Client(api_key=clean_key)
+            model_info = client.models.get(model="gemini-2.0-flash")
+            return getattr(model_info, "display_name", "Gemini 2.0 Flash")
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_check)
+            display_name = future.result(timeout=4.0)
+
+        return True, f"API key successfully verified. Connected to Google Gemini ({display_name}).", "gemini-2.0-flash"
+
+    except concurrent.futures.TimeoutError:
+        return False, "Verification timed out connecting to Google Gemini API (network delay). Please retry.", None
+    except Exception as exc:
+        err_str = str(exc)
+        logger.warning(f"[VYORA AI] Key verification check returned: {err_str}")
+        if "401" in err_str or "API_KEY_INVALID" in err_str or "PERMISSION_DENIED" in err_str or "unauthenticated" in err_str.lower():
+            return False, "Invalid API key. Please verify your credentials in Google AI Studio.", None
+        elif "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "quota" in err_str.lower():
+            return False, "API quota exhausted. Check your Google AI Studio plan and rate limits.", None
+        elif "404" in err_str or "NOT_FOUND" in err_str:
+            return True, "API key is valid (authenticated with Google AI Studio).", DEFAULT_MODEL
+        elif "Connection" in err_str or "Failed to establish" in err_str or "getaddrinfo" in err_str:
+            return False, "Network connection error reaching Google Gemini API. Please check server connectivity.", None
+        return False, f"Key verification failed: {err_str[:120]}", None

@@ -56,6 +56,7 @@ export const App: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [isModelModalOpen, setIsModelModalOpen] = useState(false);
+  const [serverKeyConfigured, setServerKeyConfigured] = useState(false);
   const [hasApiKey, setHasApiKey] = useState(false);
   const [systemConfig, setSystemConfig] = useState<SystemConfig | null>(null);
   const [modelStatus, setModelStatus] = useState<ModelStatusResponse | null>(null);
@@ -68,12 +69,22 @@ export const App: React.FC = () => {
 
     fetchModelStatus().then((ms) => {
       setModelStatus(ms);
-      if (ms.has_api_key) setHasApiKey(true);
+      if (ms.server_api_key_configured) {
+        setServerKeyConfigured(true);
+        setHasApiKey(true);
+      } else if (ms.has_api_key || storedKey) {
+        setHasApiKey(true);
+      }
     });
 
     fetchSystemConfig().then((cfg) => {
       setSystemConfig(cfg);
-      if (cfg.has_api_key_configured) setHasApiKey(true);
+      if (cfg.server_api_key_configured) {
+        setServerKeyConfigured(true);
+        setHasApiKey(true);
+      } else if (cfg.has_api_key_configured || storedKey) {
+        setHasApiKey(true);
+      }
     });
   };
 
@@ -291,18 +302,30 @@ export const App: React.FC = () => {
                   className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-mono transition-all cursor-pointer ${
                     modelStatus?.status === 'offline'
                       ? 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                      : serverKeyConfigured
+                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20'
                       : hasApiKey
                       ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20'
                       : 'bg-amber-500/10 border-amber-500/30 text-amber-300 animate-pulse'
                   }`}
-                  title={hasApiKey ? 'Click to inspect Gemini Auto Model Intelligence & candidates' : 'Click to configure API Key'}
+                  title={
+                    modelStatus?.status === 'offline'
+                      ? 'Backend service is offline or unreachable'
+                      : serverKeyConfigured
+                      ? 'Server-side Gemini API key active and ready. All users can extract video intelligence.'
+                      : hasApiKey
+                      ? 'Custom personal Gemini API key active and verified.'
+                      : 'No Gemini API key detected. Click to configure in Settings.'
+                  }
                 >
                   <Cpu className="w-3.5 h-3.5 text-violet-400" />
                   <span>
                     {modelStatus?.status === 'offline'
                       ? 'API Offline'
+                      : serverKeyConfigured
+                      ? `Server API Active · ${modelStatus?.display_model || systemConfig?.display_model || 'Gemini 3.8 Flash'}`
                       : hasApiKey
-                      ? `Gemini Auto · ${modelStatus?.display_model || systemConfig?.display_model || 'Gemini 3.8 Flash'}`
+                      ? `User Key Active · ${modelStatus?.display_model || systemConfig?.display_model || 'Gemini 3.8 Flash'}`
                       : 'Enter API Key'}
                   </span>
                   {modelStatus?.status === 'offline' ? (
@@ -358,8 +381,12 @@ export const App: React.FC = () => {
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
+        serverKeyConfigured={serverKeyConfigured}
         onKeySaved={() => {
           setHasApiKey(true);
+          refreshStatus();
+        }}
+        onKeyCleared={() => {
           refreshStatus();
         }}
       />

@@ -41,7 +41,15 @@ This guide outlines how to deploy VYORA AI to [Render](https://render.com) using
   - Source: `/*`
   - Destination: `/index.html`
 - **Environment Variables**:
-  - `VITE_API_URL`: `https://vyora-backend.onrender.com` *(Replace with your actual backend URL)*
+  - `VITE_API_URL`: `https://vyora-backend.onrender.com` *(Replace with your actual backend URL. Can be with or without trailing `/api`; the client normalizes it automatically)*
+
+---
+
+## Server API Key vs. User Key Configuration
+
+1. **Server-Side Key**: When `GEMINI_API_KEY` is set in the Render Web Service environment, the backend automatically detects it and advertises `server_api_key_configured: true`. All visitors immediately see **"Server API Active"** in the top navigation bar and can analyze media without entering a key.
+2. **User-Side Key Override**: Users can optionally configure a personal Google AI Studio key in the Settings modal if they wish to use their own quota.
+3. **Stale Job Auto-Recovery**: If a Render instance restarts during a video extraction, orphaned jobs in the database are automatically marked `FAILED` with a clear message and retry action, preventing jobs from remaining stuck at `QUEUED / 10%`.
 
 ---
 
