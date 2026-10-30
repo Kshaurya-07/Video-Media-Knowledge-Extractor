@@ -139,7 +139,7 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#050505] text-[#FAFAFA] flex flex-col font-sans selection:bg-violet-500/30 selection:text-violet-200">
+    <div className="min-h-screen bg-[#030304] text-[#FAFAFA] flex flex-col font-sans selection:bg-violet-500/30 selection:text-violet-200">
       {/* 1. If on Landing or Auth, render full-screen immersive view */}
       {currentPage === 'landing' ? (
         <LandingPage
@@ -163,23 +163,23 @@ export const App: React.FC = () => {
         <div className="flex-1 flex overflow-hidden min-h-screen">
           {/* Collapsible Sidebar */}
           <aside
-            className={`transition-all duration-300 bg-[#0A0A0A] border-r border-[#27272A] flex flex-col justify-between shrink-0 z-30 ${
+            className={`transition-all duration-300 bg-[#07070A] border-r border-[#1A1A22] flex flex-col justify-between shrink-0 z-30 ${
               isSidebarCollapsed ? 'w-20' : 'w-64'
             }`}
           >
-            {/* Top Logo & Toggle */}
-            <div className="p-4 border-b border-[#27272A] flex items-center justify-between">
+            {/* Top Brand Logo & Toggle */}
+            <div className="p-4 border-b border-[#1A1A22] flex items-center justify-between">
               <div
                 className="flex items-center gap-3 cursor-pointer overflow-hidden"
                 onClick={() => setCurrentPage('landing')}
               >
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-zinc-800 to-black border border-zinc-700 flex items-center justify-center shrink-0">
+                <div className="w-8 h-8 rounded-xl bg-[#14141B] border border-[#22222E] flex items-center justify-center shrink-0">
                   <div className="w-3.5 h-3.5 rounded-full border border-violet-400 flex items-center justify-center">
                     <div className="w-1 h-1 rounded-full bg-white" />
                   </div>
                 </div>
                 {!isSidebarCollapsed && (
-                  <span className="font-bold text-sm tracking-tight text-white whitespace-nowrap">
+                  <span className="font-semibold text-xs tracking-wider font-mono text-white whitespace-nowrap">
                     VYORA<span className="text-violet-400">.AI</span>
                   </span>
                 )}
@@ -187,7 +187,7 @@ export const App: React.FC = () => {
 
               <button
                 onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-                className="p-1.5 rounded-lg text-[#71717A] hover:text-white hover:bg-[#151515] transition-colors"
+                className="p-1.5 rounded-lg text-[#71717A] hover:text-white hover:bg-[#14141B] transition-colors"
                 title={isSidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
               >
                 {isSidebarCollapsed ? (
@@ -199,31 +199,31 @@ export const App: React.FC = () => {
             </div>
 
             {/* Navigation Links */}
-            <div className="p-3 space-y-1.5 flex-1">
+            <div className="p-3 space-y-1 flex-1">
               <button
                 onClick={() => setCurrentPage('dashboard')}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-mono transition-all ${
                   currentPage === 'dashboard'
-                    ? 'bg-white text-black shadow-md'
-                    : 'text-[#A1A1AA] hover:text-white hover:bg-[#111111]'
+                    ? 'bg-white text-black font-semibold shadow-sm'
+                    : 'text-[#A1A1AA] hover:text-white hover:bg-[#111116]'
                 }`}
                 title="Overview"
               >
                 <LayoutDashboard className="w-4 h-4 shrink-0" />
-                {!isSidebarCollapsed && <span>Overview</span>}
+                {!isSidebarCollapsed && <span>OVERVIEW</span>}
               </button>
 
               <button
                 onClick={() => setCurrentPage('import')}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-mono transition-all ${
                   currentPage === 'import'
-                    ? 'bg-white text-black shadow-md'
-                    : 'text-[#A1A1AA] hover:text-white hover:bg-[#111111]'
+                    ? 'bg-white text-black font-semibold shadow-sm'
+                    : 'text-[#A1A1AA] hover:text-white hover:bg-[#111116]'
                 }`}
                 title="Import Media"
               >
                 <Video className="w-4 h-4 shrink-0" />
-                {!isSidebarCollapsed && <span>Import Video</span>}
+                {!isSidebarCollapsed && <span>IMPORT MEDIA</span>}
               </button>
 
               <button
@@ -234,64 +234,64 @@ export const App: React.FC = () => {
                     handleLaunchDemo();
                   }
                 }}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-mono transition-all ${
                   currentPage === 'workspace'
-                    ? 'bg-white text-black shadow-md'
-                    : 'text-[#A1A1AA] hover:text-white hover:bg-[#111111]'
+                    ? 'bg-white text-black font-semibold shadow-sm'
+                    : 'text-[#A1A1AA] hover:text-white hover:bg-[#111116]'
                 }`}
-                title="AI Workspace"
+                title="AI Studio Workspace"
               >
                 <Sparkles className="w-4 h-4 shrink-0 text-violet-400" />
-                {!isSidebarCollapsed && <span>AI Workspace</span>}
+                {!isSidebarCollapsed && <span>AI STUDIO</span>}
               </button>
 
               <button
                 onClick={() => setCurrentPage('library')}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-mono transition-all ${
                   currentPage === 'library'
-                    ? 'bg-white text-black shadow-md'
-                    : 'text-[#A1A1AA] hover:text-white hover:bg-[#111111]'
+                    ? 'bg-white text-black font-semibold shadow-sm'
+                    : 'text-[#A1A1AA] hover:text-white hover:bg-[#111116]'
                 }`}
                 title="Knowledge Library"
               >
                 <Layers className="w-4 h-4 shrink-0" />
-                {!isSidebarCollapsed && <span>Knowledge Library</span>}
+                {!isSidebarCollapsed && <span>KNOWLEDGE VAULT</span>}
               </button>
             </div>
 
             {/* Sidebar Bottom Controls */}
-            <div className="p-3 border-t border-[#27272A] space-y-1.5">
+            <div className="p-3 border-t border-[#1A1A22] space-y-1">
               <button
                 onClick={() => setIsSettingsOpen(true)}
-                className="w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-medium text-[#A1A1AA] hover:text-white hover:bg-[#111111] transition-colors"
+                className="w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-mono text-[#A1A1AA] hover:text-white hover:bg-[#111116] transition-colors"
                 title="Settings & API Key"
               >
                 <Settings className="w-4 h-4 shrink-0" />
-                {!isSidebarCollapsed && <span>Settings</span>}
+                {!isSidebarCollapsed && <span>SETTINGS</span>}
               </button>
 
               <button
                 onClick={() => setCurrentPage('landing')}
-                className="w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-medium text-[#A1A1AA] hover:text-white hover:bg-[#111111] transition-colors"
-                title="Landing Page"
+                className="w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-mono text-[#A1A1AA] hover:text-white hover:bg-[#111116] transition-colors"
+                title="Landing Portal"
               >
                 <Compass className="w-4 h-4 shrink-0" />
-                {!isSidebarCollapsed && <span>Landing Portal</span>}
+                {!isSidebarCollapsed && <span>PUBLIC PORTAL</span>}
               </button>
 
               <button
                 onClick={handleSignOut}
-                className="w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-medium text-[#71717A] hover:text-red-400 hover:bg-[#111111] transition-colors"
+                className="w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-mono text-[#71717A] hover:text-rose-400 hover:bg-[#111116] transition-colors"
                 title="Sign Out"
               >
                 <LogOut className="w-4 h-4 shrink-0" />
-                {!isSidebarCollapsed && <span>Sign Out</span>}
+                {!isSidebarCollapsed && <span>SIGN OUT</span>}
               </button>
             </div>
           </aside>
 
           {/* Main App Canvas */}
-          <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
+          <div className="flex-1 flex flex-col min-w-0 overflow-y-auto bg-[#030304]">
             {/* Render Free Tier Cold-Start Indicator Banner */}
             {connectionState === 'waking_up' && (
               <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 text-center text-xs text-amber-300 flex items-center justify-center gap-2">
@@ -303,11 +303,10 @@ export const App: React.FC = () => {
             )}
 
             {/* Top Workspace Header Bar */}
-            <header className="px-6 py-3.5 border-b border-[#27272A] bg-[#050505]/80 backdrop-blur-md sticky top-0 z-20 flex items-center justify-between">
+            <header className="px-6 py-3 border-b border-[#1A1A22] bg-[#07070A]/80 backdrop-blur-md sticky top-0 z-20 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <span className="text-xs font-mono uppercase tracking-wider text-[#A1A1AA]">
-                  VYORA AI •{' '}
-                  <span className="text-white capitalize">{currentPage}</span>
+                <span className="text-[11px] font-mono text-[#71717A] uppercase tracking-wider">
+                  [ VYORA AI / <span className="text-white">{currentPage}</span> ]
                 </span>
               </div>
 
@@ -315,10 +314,10 @@ export const App: React.FC = () => {
                 {activeAnalysis && currentPage === 'workspace' && (
                   <button
                     onClick={() => setIsExportOpen(true)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#111111] hover:bg-[#151515] border border-[#27272A] text-xs font-medium text-white transition-colors"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#14141B] hover:bg-[#1A1A24] border border-[#22222E] text-xs font-mono text-white transition-colors"
                   >
                     <FileText className="w-3.5 h-3.5 text-violet-400" />
-                    <span>Export</span>
+                    <span>EXPORT ARTIFACT</span>
                   </button>
                 )}
 
@@ -344,9 +343,9 @@ export const App: React.FC = () => {
                       connectionState === 'offline' || modelStatus?.status === 'offline'
                         ? 'bg-rose-500/10 border-rose-500/30 text-rose-300'
                         : serverKeyConfigured
-                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20'
+                        ? 'bg-[#14141B] border-[#22222E] text-[#D4D4D8] hover:border-violet-500/40'
                         : hasApiKey
-                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20'
+                        ? 'bg-[#14141B] border-[#22222E] text-[#D4D4D8] hover:border-violet-500/40'
                         : 'bg-amber-500/10 border-amber-500/30 text-amber-300 animate-pulse'
                     }`}
                     title={
@@ -364,10 +363,10 @@ export const App: React.FC = () => {
                       {connectionState === 'offline' || modelStatus?.status === 'offline'
                         ? 'API Offline'
                         : serverKeyConfigured
-                        ? `Server API Active · ${modelStatus?.display_model || systemConfig?.display_model || 'Gemini 2.0 Flash'}`
+                        ? `Server Key Active · ${modelStatus?.display_model || systemConfig?.display_model || 'Gemini 2.0 Flash'}`
                         : hasApiKey
                         ? `User Key Active · ${modelStatus?.display_model || systemConfig?.display_model || 'Gemini 2.0 Flash'}`
-                        : 'Enter API Key'}
+                        : 'Configure API Key'}
                     </span>
                     {connectionState === 'offline' || modelStatus?.status === 'offline' ? (
                       <AlertCircle className="w-3 h-3 text-rose-400" />

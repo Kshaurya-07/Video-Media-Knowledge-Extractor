@@ -46,7 +46,7 @@ export const ImportPage: React.FC<ImportPageProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    fetchSystemConfig().then(setSystemConfig);
+    fetchSystemConfig().then(setSystemConfig).catch(() => {});
   }, []);
 
   // Poll for background job progress (2.5s interval to minimize Render Free Tier worker load)
@@ -76,7 +76,6 @@ export const ImportPage: React.FC<ImportPageProps> = ({
       } catch (err: any) {
         consecutiveFailures++;
         console.warn(`Job polling transient hiccup (${consecutiveFailures}/4):`, err);
-        // Only fail after 4 consecutive dropped polls (e.g. Render temporary network stall)
         if (consecutiveFailures >= 4) {
           clearInterval(interval);
           setIsProcessing(false);
@@ -93,13 +92,12 @@ export const ImportPage: React.FC<ImportPageProps> = ({
     setIsProcessing(true);
     setStage('UPLOADING');
     setProgressPercent(10);
-    setStatusMessage('Checking Render Free Tier backend readiness...');
+    setStatusMessage('Checking Render backend readiness...');
 
     try {
-      // Step 0: Ensure backend container is awake before transmitting video data
       const isReady = await probeBackendWithBackoff((_, __, msg) => setStatusMessage(msg), 3);
       if (!isReady) {
-        throw new Error('Backend is waking up from sleep. Please wait 15 seconds and try again.');
+        throw new Error('Backend is waking up from cold start. Please wait 15 seconds and try again.');
       }
 
       let fileId = '';
@@ -123,7 +121,6 @@ export const ImportPage: React.FC<ImportPageProps> = ({
         }
       }
 
-      // Step 2: Start background extraction job
       const job = await startProcessingJob(
         fileId || undefined,
         activeMode === 'url' ? videoUrl.trim() : undefined,
@@ -140,210 +137,193 @@ export const ImportPage: React.FC<ImportPageProps> = ({
         setErrorMessage('A Google Gemini API Key is required for new video analysis.');
         onOpenSettings();
       } else {
-        setErrorMessage(err.message || 'Failed to start media processing pipeline.');
+        setErrorMessage(err.message || 'Processing failed. Please check backend connection.');
       }
     }
   };
 
-  const handleFileDrop = (e: React.DragEvent) => {
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const file = e.dataTransfer.files[0];
-      if (file.size > 500 * 1024 * 1024) {
-        setErrorMessage('File size exceeds the 500MB limit.');
-        return;
-      }
-      setCachedUploadedFile(null);
       setSelectedFile(file);
     }
   };
 
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+  };
+
   return (
-    <div className="max-w-4xl mx-auto py-8 space-y-8 animate-fade-in">
+    <div className="max-w-3xl mx-auto p-4 sm:p-6 space-y-6 animate-fade-in text-left">
       {/* Header */}
-      <div className="text-center space-y-2 max-w-xl mx-auto">
-        <span className="text-xs font-mono uppercase tracking-widest text-violet-400">
-          Media Ingestion & Synthesis
+      <div className="space-y-1.5 border-b border-[#1C1C24] pb-5">
+        <span className="text-[10px] font-mono tracking-widest text-[#71717A] uppercase">
+          MEDIA INGESTION & SYNTHESIS
         </span>
-        <h1 className="text-3xl font-extrabold tracking-tight text-white">
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white font-sans">
           Import Video into VYORA
         </h1>
-        <p className="text-xs text-[#A1A1AA]">
+        <p className="text-xs text-[#71717A]">
           Upload any lecture, conference talk, or meeting recording to extract source-grounded intelligence.
         </p>
       </div>
 
-      {/* Main Dimensional Panel */}
-      <div className="rounded-3xl bg-[#0A0A0A] border border-[#27272A] p-6 sm:p-10 shadow-2xl space-y-8">
+      {/* Main Studio Card */}
+      <div className="p-6 rounded-3xl bg-[#070709] border border-[#1A1A22] shadow-2xl space-y-6">
         {!isProcessing ? (
           <>
             {/* Mode Switcher */}
-            <div className="flex items-center justify-center gap-2 max-w-xs mx-auto p-1 rounded-2xl bg-[#111111] border border-[#27272A]">
-              <button
-                type="button"
-                onClick={() => setActiveMode('upload')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-semibold transition-all ${
-                  activeMode === 'upload'
-                    ? 'bg-white text-black shadow-md'
-                    : 'text-[#A1A1AA] hover:text-white'
-                }`}
-              >
-                <Upload className="w-3.5 h-3.5" />
-                <span>Upload File</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveMode('url')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-semibold transition-all ${
-                  activeMode === 'url'
-                    ? 'bg-white text-black shadow-md'
-                    : 'text-[#A1A1AA] hover:text-white'
-                }`}
-              >
-                <LinkIcon className="w-3.5 h-3.5" />
-                <span>Video Link</span>
-              </button>
+            <div className="flex items-center justify-center">
+              <div className="inline-flex p-1 rounded-xl bg-[#0E0E14] border border-[#1F1F28] font-mono text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => setActiveMode('upload')}
+                  className={`flex items-center gap-2 px-5 py-2 rounded-lg font-semibold transition-all ${
+                    activeMode === 'upload'
+                      ? 'bg-white text-black shadow-md'
+                      : 'text-[#A1A1AA] hover:text-white'
+                  }`}
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Upload File</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveMode('url')}
+                  className={`flex items-center gap-2 px-5 py-2 rounded-lg font-semibold transition-all ${
+                    activeMode === 'url'
+                      ? 'bg-white text-black shadow-md'
+                      : 'text-[#A1A1AA] hover:text-white'
+                  }`}
+                >
+                  <LinkIcon className="w-3.5 h-3.5" />
+                  <span>Video Link</span>
+                </button>
+              </div>
             </div>
 
-            {/* Upload Zone */}
+            {/* Mode 1: File Upload */}
             {activeMode === 'upload' ? (
               <div
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setIsDragging(true);
-                }}
-                onDragLeave={() => setIsDragging(false)}
-                onDrop={handleFileDrop}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
                 onClick={() => fileInputRef.current?.click()}
-                className={`border-2 border-dashed rounded-3xl p-10 sm:p-14 text-center cursor-pointer transition-all duration-200 ${
+                className={`border-2 border-dashed rounded-2xl p-8 sm:p-12 text-center cursor-pointer transition-all duration-200 ${
                   isDragging
-                    ? 'border-violet-500 bg-violet-500/10'
+                    ? 'border-violet-500 bg-violet-950/20'
                     : selectedFile
-                    ? 'border-violet-500/50 bg-[#111111]'
-                    : 'border-[#27272A] hover:border-zinc-700 bg-[#050505]'
+                    ? 'border-violet-500/50 bg-[#0A0A0F]'
+                    : 'border-[#1F1F28] hover:border-zinc-700 bg-[#050507]'
                 }`}
               >
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="video/*,audio/*,.mp4,.mov,.avi,.mkv,.webm,.mpeg,.mpg,.wmv,.3gp,.mp3,.wav,.m4a,.ogg"
-                  className="hidden"
+                  accept="video/*,audio/*,.mp4,.mkv,.mov,.webm,.avi,.flv,.m4v,.ts"
                   onChange={(e) => {
-                    if (e.target.files && e.target.files[0]) {
-                      const file = e.target.files[0];
-                      if (file.size > 500 * 1024 * 1024) {
-                        setErrorMessage('File size exceeds the 500MB limit.');
-                        return;
-                      }
-                      setCachedUploadedFile(null);
-                      setSelectedFile(file);
+                    if (e.target.files && e.target.files.length > 0) {
+                      setSelectedFile(e.target.files[0]);
                     }
                   }}
+                  className="hidden"
                 />
 
-                <div className="flex flex-col items-center justify-center space-y-4">
-                  <div className="w-16 h-16 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-violet-400 shadow-inner">
-                    {selectedFile ? <FileCheck className="w-8 h-8 text-emerald-400" /> : <Upload className="w-8 h-8" />}
+                <div className="flex flex-col items-center justify-center space-y-3">
+                  <div className="w-12 h-12 rounded-2xl bg-[#0E0E14] border border-[#202028] flex items-center justify-center text-violet-400">
+                    {selectedFile ? <FileCheck className="w-6 h-6 text-emerald-400" /> : <Upload className="w-6 h-6" />}
                   </div>
-                  <div>
-                    {selectedFile ? (
-                      <div className="space-y-1">
-                        <p className="text-sm font-semibold text-white">{selectedFile.name}</p>
-                        <p className="text-xs font-mono text-[#A1A1AA]">
-                          {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB • Ready for Extraction
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="space-y-1">
-                        <p className="text-sm font-semibold text-white">
-                          Drag and drop your media file, or <span className="text-violet-400 underline underline-offset-4">browse</span>
-                        </p>
-                        <p className="text-xs text-[#71717A]">
-                          MP4, MOV, AVI, MKV, WebM, MPEG, WMV, 3GP, MP3, WAV up to 500MB
-                        </p>
-                      </div>
-                    )}
-                  </div>
+
+                  {selectedFile ? (
+                    <div className="space-y-1">
+                      <p className="text-xs font-bold text-white max-w-sm truncate">{selectedFile.name}</p>
+                      <p className="text-[11px] font-mono text-emerald-400">
+                        {formatFileSize(selectedFile.size)} · Ready for Extraction
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold text-white">
+                        Click or drag video file to this area
+                      </p>
+                      <p className="text-[11px] text-[#52525B] font-mono">
+                        MP4, WebM, MOV, MKV, AVI, TS (Up to 500MB+)
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (
-              /* URL Input Box */
-              <div className="p-8 rounded-3xl bg-[#050505] border border-[#27272A] space-y-4 text-left">
-                <label className="block text-xs font-medium text-[#D4D4D8]">
-                  Online Video Link or Media Stream URL
-                </label>
-                <div className="relative">
-                  <LinkIcon className="w-4 h-4 text-[#71717A] absolute left-3.5 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="url"
-                    value={videoUrl}
-                    onChange={(e) => setVideoUrl(e.target.value)}
-                    placeholder="https://www.youtube.com/watch?v=... or https://example.com/lecture.mp4"
-                    className="w-full pl-10 pr-4 py-3 bg-[#111111] border border-[#27272A] rounded-xl text-xs text-white placeholder:text-[#71717A] focus:outline-none focus:border-violet-500 transition-colors"
-                  />
+              /* Mode 2: URL Ingestion */
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-[11px] font-mono text-[#A1A1AA] uppercase tracking-wider block">
+                    Public Video URL (YouTube, MP4 Stream)
+                  </label>
+                  <div className="relative flex items-center">
+                    <LinkIcon className="w-4 h-4 text-[#52525B] absolute left-3.5 pointer-events-none" />
+                    <input
+                      type="url"
+                      value={videoUrl}
+                      onChange={(e) => setVideoUrl(e.target.value)}
+                      placeholder="https://www.youtube.com/watch?v=..."
+                      className="w-full pl-10 pr-4 py-3 bg-[#050507] border border-[#1F1F28] rounded-xl text-xs text-white placeholder:text-[#52525B] focus:outline-none focus:border-violet-500 font-mono"
+                    />
+                  </div>
+                  <p className="text-[10px] text-[#52525B] font-mono">
+                    Direct public streams and YouTube videos are analyzed without downloading to local disk.
+                  </p>
                 </div>
-                <p className="text-[11px] text-[#71717A]">
-                  Supports YouTube videos, public conference lectures, and direct MP4/WebM/audio media streams (protected by SSRF defense).
-                </p>
               </div>
             )}
 
-            {/* Render Free Tier Optimization Badge */}
-            <div className="flex flex-wrap items-center justify-between text-[11px] text-[#71717A] px-2 py-1.5 rounded-xl bg-[#070707] border border-[#1A1A1A]">
-              <span className="flex items-center gap-1.5 text-zinc-400">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"></span>
-                Render Free Tier Optimized: 64KB direct-to-disk streaming &bull; Zero memory spikes &bull; Low CPU footprint
-              </span>
-              <span className="text-[#A1A1AA]">Tested for 40MB+ MP4 video uploads</span>
-            </div>
-
-            {/* Error Message */}
+            {/* Error Banner */}
             {errorMessage && (
-              <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs flex items-center justify-between">
+              <div className="p-4 rounded-xl bg-rose-950/20 border border-rose-500/30 flex items-center justify-between gap-3 text-xs text-rose-300">
                 <div className="flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
                   <span>{errorMessage}</span>
                 </div>
-                {(errorMessage.toLowerCase().includes('api key') ||
-                  errorMessage.toLowerCase().includes('unauthenticated') ||
-                  errorMessage.toLowerCase().includes('401')) &&
-                !errorMessage.toLowerCase().includes('timeout') &&
-                !errorMessage.toLowerCase().includes('worker') &&
-                !errorMessage.toLowerCase().includes('json') &&
-                !errorMessage.toLowerCase().includes('parse') &&
-                !errorMessage.toLowerCase().includes('stage') &&
-                !errorMessage.toLowerCase().includes('gemini_') ? (
-                  <button
-                    type="button"
-                    onClick={onOpenSettings}
-                    className="px-3 py-1 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-200 text-xs font-semibold transition-colors shrink-0"
-                  >
-                    Configure Key
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleStartProcessing}
-                    className="px-3 py-1 rounded-lg bg-violet-500/20 hover:bg-violet-500/30 text-violet-200 text-xs font-semibold transition-colors shrink-0"
-                  >
-                    Retry Extraction
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={onOpenSettings}
+                  className="px-3 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 text-[11px] font-mono shrink-0 transition-colors"
+                >
+                  Configure Key
+                </button>
               </div>
             )}
 
             {/* Action Bar */}
-            <div className="flex items-center justify-between pt-2">
+            <div className="flex items-center justify-between pt-2 border-t border-[#1C1C24]">
               <span className="text-xs font-mono text-[#71717A]">
-                AI Model Engine: <span className="text-violet-400">Gemini Auto · {systemConfig?.display_model || 'Gemini 2.0 Flash'}</span>
+                AI Model Engine:{' '}
+                <span className="text-violet-400">
+                  Gemini Auto · {systemConfig?.display_model || 'Gemini 2.0 Flash'}
+                </span>
               </span>
 
               <button
                 type="button"
                 onClick={handleStartProcessing}
                 disabled={activeMode === 'upload' ? !selectedFile : !videoUrl.trim()}
-                className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-white text-black hover:bg-zinc-200 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-bold transition-all shadow-xl shadow-white/5"
+                className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-white text-black hover:bg-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed text-xs font-bold transition-all shadow-xl shadow-white/5"
               >
                 <span>Extract Video Intelligence</span>
                 <ArrowRight className="w-4 h-4" />
@@ -352,7 +332,7 @@ export const ImportPage: React.FC<ImportPageProps> = ({
           </>
         ) : (
           /* Live 3D Pipeline Visualization during actual processing */
-          <div className="py-4 space-y-6 text-center">
+          <div className="py-6 space-y-6 text-center">
             {/* 3D Core with Stage Adaptivity */}
             <div className="w-full max-w-sm mx-auto h-64">
               <ProcessingCore3D stage={stage} progressPercent={progressPercent} />
@@ -365,17 +345,17 @@ export const ImportPage: React.FC<ImportPageProps> = ({
                 <span className="text-[#A1A1AA]">{Math.round(progressPercent)}%</span>
               </div>
 
-              <div className="w-full h-2 rounded-full bg-[#151515] overflow-hidden border border-[#27272A]">
+              <div className="w-full h-1.5 rounded-full bg-[#121218] overflow-hidden border border-[#202028]">
                 <div
                   className="h-full bg-gradient-to-r from-violet-600 via-purple-500 to-emerald-400 transition-all duration-300"
                   style={{ width: `${progressPercent}%` }}
                 />
               </div>
 
-              <p className="text-xs text-[#FAFAFA] font-medium pt-1">
+              <p className="text-xs text-[#FAFAFA] font-medium pt-1 font-mono">
                 {statusMessage || 'Synthesizing knowledge layers...'}
               </p>
-              <p className="text-[11px] text-[#71717A]">
+              <p className="text-[10px] font-mono text-[#52525B]">
                 Gemini Auto ({systemConfig?.display_model || 'Gemini 2.0 Flash'}) is interleaving visual frames, waveforms, and OCR layers.
               </p>
             </div>

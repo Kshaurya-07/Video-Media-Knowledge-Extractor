@@ -1,16 +1,17 @@
-import React, { useState } from 'react';
-import { VyoraKnowledgeCore } from '../3d/VyoraKnowledgeCore';
+import React, { useState, useEffect } from 'react';
+import { VyoraIntelligenceOrbit } from '../3d/VyoraIntelligenceOrbit';
+import { VideoPlayer } from '../VideoPlayer';
 import {
   ArrowRight,
   Play,
-  Search,
-  Bookmark,
   MessageSquare,
-  Layers,
-  FileText,
   Link as LinkIcon,
+  Clock,
   Cpu,
+  Globe,
+  ExternalLink,
 } from 'lucide-react';
+import { fetchModelStatus, ModelStatusResponse } from '../../lib/api';
 
 interface LandingPageProps {
   onGetStarted: () => void;
@@ -26,6 +27,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   onImportUrl,
 }) => {
   const [videoUrl, setVideoUrl] = useState('');
+  const [storyStage, setStoryStage] = useState<1 | 2 | 3 | 4>(1);
+  const [modelStatus, setModelStatus] = useState<ModelStatusResponse | null>(null);
+
+  // Demo preview video player time state
+  const [demoTime, setDemoTime] = useState(0);
+
+  useEffect(() => {
+    fetchModelStatus().then(setModelStatus).catch(() => {});
+  }, []);
 
   const handleUrlSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,420 +46,618 @@ export const LandingPage: React.FC<LandingPageProps> = ({
     }
   };
 
+  const storytellingStages = [
+    {
+      num: 1 as const,
+      label: 'STAGE 01',
+      title: 'RAW MEDIA',
+      headline: 'Every insight begins with a frame.',
+      description:
+        'Videos contain layers of visual artifacts, dialogue, and temporal context waiting to be unpacked.',
+      details:
+        'Direct streaming ingestion decomposes video container atoms without loading massive 40MB+ buffers into memory.',
+    },
+    {
+      num: 2 as const,
+      label: 'STAGE 02',
+      title: 'INTELLIGENCE',
+      headline: 'AI connects what it sees and hears.',
+      description:
+        'Visual information and spoken content become synchronized multimodal signal streams in parallel attention space.',
+      details:
+        'Gemini 2.0 Flash processes interleaved visual frames and acoustic spectrograms across a 1M token context window.',
+    },
+    {
+      num: 3 as const,
+      label: 'STAGE 03',
+      title: 'KNOWLEDGE EXTRACTION',
+      headline: 'Unstructured media becomes structured knowledge.',
+      description:
+        'The neural engine isolates executive summaries, chronological chapters, verbatim dialogue, and key entities.',
+      details:
+        'Three-stage schema-validated extraction guarantees deterministic JSON output with zero data truncation.',
+    },
+    {
+      num: 4 as const,
+      label: 'STAGE 04',
+      title: 'UNDERSTANDING',
+      headline: 'Every moment becomes searchable, navigable and understandable.',
+      description:
+        'Interact with an interconnected knowledge constellation. Seek to exact timestamps and converse with the source.',
+      details:
+        'Ask deep questions grounded strictly in the source recording, backed by millisecond-accurate timestamp citations.',
+    },
+  ];
+
+  const capabilities = [
+    {
+      index: 'F/01',
+      tag: 'SYNTHESIS',
+      title: 'Video Understanding',
+      desc: 'Understand visual content, presentations, slides, demonstrations, and critical inflection points in full multimodal space.',
+    },
+    {
+      index: 'F/02',
+      tag: 'INTELLIGENCE',
+      title: 'Smart Summarization',
+      desc: 'Transform hours of long-form media into structured executive summaries, key takeaways, and actionable next steps.',
+    },
+    {
+      index: 'F/03',
+      tag: 'TEMPORAL',
+      title: 'Timestamped Chapters',
+      desc: 'Break continuous media into logical, chronological chapters with millisecond-accurate seeking and key moment previews.',
+    },
+    {
+      index: 'F/04',
+      tag: 'ACOUSTIC',
+      title: 'Transcript & Speech',
+      desc: 'Extract exact spoken dialogue, speaker turns, and searchable transcripts synchronized with video playback.',
+    },
+    {
+      index: 'F/05',
+      tag: 'EXTRACTION',
+      title: 'Key Moments & Entities',
+      desc: 'Discover critical concepts, people, and technological entities mentioned throughout the video with frequency scoring.',
+    },
+    {
+      index: 'F/06',
+      tag: 'REASONING',
+      title: 'Source-Grounded Q&A',
+      desc: 'Converse with your video. Ask deep architectural or factual questions and receive verifiable answers with timestamp citations.',
+    },
+  ];
+
+  const workflowSteps = [
+    {
+      step: '01',
+      title: 'INGEST',
+      subtitle: 'Universal Media Streaming',
+      desc: 'Upload MP4, WebM, MOV, or paste a public YouTube URL. Streaming architecture streams directly to disk with zero memory spikes.',
+    },
+    {
+      step: '02',
+      title: 'ANALYZE',
+      subtitle: 'Multimodal Interleaving',
+      desc: 'Gemini 2.0 Flash analyzes visual frames, acoustic waveforms, and OCR text simultaneously within a unified attention manifold.',
+    },
+    {
+      step: '03',
+      title: 'STRUCTURE',
+      subtitle: 'Modular Schema Synthesis',
+      desc: 'Three-stage JSON pipeline extracts executive summaries, timestamped chapters, dialogue segments, and conceptual entities.',
+    },
+    {
+      step: '04',
+      title: 'EXPLORE',
+      subtitle: 'Interactive AI Studio',
+      desc: 'Navigate the video, click chapters to seek instantly, search verbatim dialogue, and query the video through grounded AI chat.',
+    },
+  ];
+
+  const demoChapters = [
+    { start: 0, formatted: '00:00', title: 'Opening & Forest Environment', summary: 'Introduction to the meadow wildlife and opening sequence.' },
+    { start: 12, formatted: '00:12', title: 'Awakening & Creature Introductions', summary: 'Big Buck wakes up and interacts with birds and animals.' },
+    { start: 24, formatted: '00:24', title: 'The Antagonists Emerge', summary: 'The mischievous rodent trio begins disturbing the peace.' },
+  ];
+
   return (
-    <div className="min-h-screen bg-[#050505] text-[#FAFAFA] flex flex-col selection:bg-violet-500/30 selection:text-violet-200">
-      {/* 1. Cinematic Floating Navbar */}
-      <nav className="fixed top-0 left-0 right-0 z-50 px-6 py-4 backdrop-blur-xl bg-[#050505]/75 border-b border-[#27272A]/80">
+    <div className="min-h-screen bg-[#030304] text-[#FAFAFA] flex flex-col selection:bg-violet-500/20 selection:text-white">
+      {/* ------------------------------------------------------------- */}
+      {/* 1. SOPHISTICATED ORDO-INSPIRED NAVIGATION */}
+      {/* ------------------------------------------------------------- */}
+      <nav className="fixed top-0 left-0 right-0 z-50 px-6 py-3.5 backdrop-blur-xl bg-[#030304]/80 border-b border-[#1A1A22]">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          {/* Logo with geometric core symbol */}
-          <div className="flex items-center gap-3 cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-zinc-800 to-black border border-zinc-700/80 flex items-center justify-center shadow-lg relative group">
-              <div className="absolute inset-0 rounded-xl bg-violet-600/20 blur group-hover:bg-violet-600/40 transition-colors" />
-              <div className="relative w-4 h-4 rounded-full border border-violet-400 flex items-center justify-center">
-                <div className="w-1.5 h-1.5 rounded-full bg-white shadow-sm" />
+          {/* Brand Logo */}
+          <div
+            className="flex items-center gap-2.5 cursor-pointer group"
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          >
+            <div className="w-7 h-7 rounded-lg bg-[#0A0A0E] border border-[#26262E] flex items-center justify-center group-hover:border-violet-500/50 transition-colors">
+              <div className="w-2.5 h-2.5 rounded-full border border-violet-400 flex items-center justify-center">
+                <div className="w-1 h-1 rounded-full bg-white" />
               </div>
             </div>
-            <div>
-              <span className="font-bold text-base tracking-tight text-white font-sans">
-                VYORA<span className="text-violet-400">.AI</span>
+            <div className="flex items-baseline gap-1.5">
+              <span className="font-bold text-sm tracking-wider text-white font-mono">
+                VYORA
+              </span>
+              <span className="text-[10px] font-mono text-[#71717A]">
+                AI
               </span>
             </div>
           </div>
 
-          {/* Nav Links */}
-          <div className="hidden md:flex items-center gap-8 text-xs font-medium text-[#A1A1AA]">
-            <a href="#features" className="hover:text-white transition-colors">
-              Platform Features
+          {/* Minimal Nav Links */}
+          <div className="hidden md:flex items-center gap-8 text-xs font-mono text-[#A1A1AA]">
+            <a href="#capabilities" className="hover:text-white transition-colors">
+              Capabilities
             </a>
             <a href="#how-it-works" className="hover:text-white transition-colors">
               How It Works
             </a>
-            <a href="#preview" className="hover:text-white transition-colors">
-              Workspace Preview
+            <a href="#engine" className="hover:text-white transition-colors">
+              Intelligence Engine
+            </a>
+            <a href="#platform" className="hover:text-white transition-colors">
+              Platform
+            </a>
+            <a href="#experience" className="hover:text-white transition-colors">
+              Studio Demo
             </a>
           </div>
 
-          {/* Action CTAs */}
+          {/* Right Action CTAs & Telemetry */}
           <div className="flex items-center gap-3">
+            {/* Live Model Badge */}
+            <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#0A0A0E] border border-[#202028] text-[10px] font-mono text-[#71717A]">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              <span>{modelStatus?.display_model || 'Gemini 2.0 Flash'}</span>
+            </div>
+
             <button
+              type="button"
               onClick={onSignIn}
-              className="px-4 py-2 rounded-xl text-xs font-medium text-zinc-300 hover:text-white hover:bg-zinc-900 border border-zinc-800 transition-colors"
+              className="hidden sm:inline-block px-3.5 py-1.5 rounded-xl text-xs font-mono text-[#A1A1AA] hover:text-white hover:bg-[#0E0E14] border border-transparent hover:border-[#26262E] transition-all"
             >
               Sign In
             </button>
+
             <button
+              type="button"
               onClick={onGetStarted}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-white text-black hover:bg-zinc-200 transition-all shadow-lg shadow-white/5"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-white text-black hover:bg-zinc-200 transition-all shadow-xl shadow-white/5 active:scale-95"
             >
-              <span>Get Started</span>
+              <span>Open Workspace</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
       </nav>
 
-      {/* 2. Hero Section with 3D Knowledge Core */}
-      <section className="relative pt-32 pb-20 md:pt-40 md:pb-28 px-6 max-w-7xl mx-auto w-full flex-1 flex flex-col justify-center">
-        {/* Ambient Dark Atmospheric Illumination */}
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[700px] h-[450px] bg-violet-600/10 rounded-full blur-[140px] pointer-events-none -z-10" />
+      {/* ------------------------------------------------------------- */}
+      {/* 2. HERO SECTION — ORDO COMPOSITION WITH INTELLIGENCE ORBIT */}
+      {/* ------------------------------------------------------------- */}
+      <section className="relative pt-32 pb-16 md:pt-40 md:pb-24 px-6 max-w-7xl mx-auto w-full flex-1 flex flex-col justify-center bg-grid-pattern">
+        {/* Subtle Ambient Radial Glow */}
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[720px] h-[380px] bg-violet-600/10 rounded-full blur-[160px] pointer-events-none -z-10" />
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
-          {/* Editorial Left Column */}
-          <div className="lg:col-span-7 space-y-6 text-left">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#111111] border border-[#27272A] text-xs font-mono text-[#D4D4D8]">
-              <span className="w-2 h-2 rounded-full bg-violet-500 animate-pulse" />
-              <span>AI VIDEO INTELLIGENCE PLATFORM</span>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          {/* Editorial Left Hero Column */}
+          <div className="lg:col-span-6 space-y-6 text-left">
+            {/* Section Tag */}
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#09090D] border border-[#202028] text-[10px] font-mono tracking-widest text-[#A1A1AA] uppercase">
+              <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
+              <span>VIDEO INTELLIGENCE / VERSION 1.0</span>
             </div>
 
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-[#FAFAFA] leading-[1.08]">
-              Every Video Holds a{' '}
-              <span className="bg-gradient-to-r from-white via-zinc-200 to-violet-400 bg-clip-text text-transparent">
-                Universe of Knowledge.
+            {/* Main Headline */}
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-white leading-[1.06] font-sans">
+              Turn every video <br />
+              <span className="bg-gradient-to-r from-white via-zinc-200 to-violet-300 bg-clip-text text-transparent">
+                into intelligence.
               </span>
             </h1>
 
-            <p className="text-base sm:text-lg text-[#A1A1AA] max-w-xl font-normal leading-relaxed">
-              Transform hours of video into searchable chapters, meaningful insights, and answers
-              linked directly to their source.
+            {/* Supporting Description */}
+            <p className="text-base text-[#A1A1AA] max-w-lg leading-relaxed font-normal">
+              Transform hours of video into structured, searchable knowledge with AI-powered video understanding.
+              Upload media or paste a public video link to synthesize summaries, chapters, dialogue, and source-grounded answers.
             </p>
 
-            {/* Quick Action Input Bar */}
-            <form onSubmit={handleUrlSubmit} className="pt-2 max-w-xl">
-              <div className="relative flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 p-1.5 rounded-2xl bg-[#111111] border border-[#27272A] shadow-2xl focus-within:border-violet-500/70 transition-all">
+            {/* URL & Ingest Input Bar */}
+            <form onSubmit={handleUrlSubmit} className="pt-1 max-w-lg">
+              <div className="relative flex flex-col sm:flex-row items-stretch sm:items-center gap-2 p-1.5 rounded-2xl bg-[#09090D] border border-[#202028] shadow-2xl focus-within:border-violet-500/60 transition-all">
                 <div className="flex items-center gap-2 px-3 flex-1">
-                  <LinkIcon className="w-4 h-4 text-[#71717A] shrink-0" />
+                  <LinkIcon className="w-3.5 h-3.5 text-[#52525B] shrink-0" />
                   <input
                     type="text"
                     value={videoUrl}
                     onChange={(e) => setVideoUrl(e.target.value)}
-                    placeholder="Paste a supported video link or upload your media..."
-                    className="w-full py-2 bg-transparent text-xs text-[#FAFAFA] placeholder:text-[#71717A] focus:outline-none"
+                    placeholder="Paste YouTube URL or open workspace..."
+                    className="w-full bg-transparent text-xs text-white placeholder:text-[#52525B] focus:outline-none font-mono py-2"
                   />
                 </div>
                 <button
                   type="submit"
-                  className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-white text-black hover:bg-zinc-200 text-xs font-semibold transition-all shadow-md shrink-0"
+                  className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-white text-black hover:bg-zinc-200 text-xs font-bold transition-all shadow-md shrink-0"
                 >
-                  <span>Explore Your Knowledge</span>
+                  <span>Start Analyzing</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>
             </form>
 
-            {/* Secondary CTA buttons */}
+            {/* Dual CTAs & Telemetry Badge */}
             <div className="flex flex-wrap items-center gap-4 pt-1">
               <button
+                type="button"
                 onClick={onLaunchDemo}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#111111] hover:bg-[#151515] border border-[#27272A] text-xs font-medium text-[#D4D4D8] transition-colors"
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#0A0A0E] hover:bg-[#121218] border border-[#202028] hover:border-zinc-700 text-xs font-mono text-[#D4D4D8] transition-all"
               >
-                <Play className="w-3.5 h-3.5 text-violet-400 fill-violet-400/20" />
-                <span>Launch Interactive Demo Keynote</span>
+                <Play className="w-3.5 h-3.5 text-violet-400 fill-current" />
+                <span>Launch Sample Intelligence</span>
               </button>
+
               <a
-                href="#how-it-works"
-                className="text-xs text-[#71717A] hover:text-[#FAFAFA] font-medium transition-colors"
+                href="#capabilities"
+                className="text-xs font-mono text-[#71717A] hover:text-white transition-colors"
               >
-                See How It Works →
+                Explore Platform Capabilities ↓
               </a>
             </div>
-          </div>
 
-          {/* Signature 3D Knowledge Core Right Column */}
-          <div className="lg:col-span-5 flex items-center justify-center relative">
-            <div className="w-full max-w-[440px] aspect-square relative flex items-center justify-center">
-              <VyoraKnowledgeCore
-                className="w-full h-full min-h-[380px]"
-                interactive={true}
-                scale={1.05}
-                glowColor="#8B5CF6"
-              />
-              <div className="absolute -bottom-2 text-center pointer-events-none">
-                <span className="text-[10px] font-mono tracking-widest text-[#71717A] uppercase bg-[#050505]/80 px-3 py-1 rounded-full border border-[#27272A]">
-                  Rotate Core • Multimodal Intelligence
-                </span>
+            {/* Monospaced Telemetry Row */}
+            <div className="pt-4 border-t border-[#1A1A22] flex flex-wrap items-center gap-x-6 gap-y-2 text-[10px] font-mono text-[#52525B]">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[#A1A1AA]">ENGINE:</span>
+                <span className="text-violet-400 font-semibold">{modelStatus?.display_model || 'Gemini 2.0 Flash'}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[#A1A1AA]">CONTEXT:</span>
+                <span>1,048,576 TOKENS</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[#A1A1AA]">STATUS:</span>
+                <span className="text-emerald-400 font-semibold">OPERATIONAL</span>
               </div>
             </div>
           </div>
-        </div>
-      </section>
 
-      {/* 3. Feature Section Grid */}
-      <section id="features" className="py-24 px-6 border-t border-[#27272A]/70 bg-[#0A0A0A]">
-        <div className="max-w-7xl mx-auto space-y-16">
-          <div className="text-center space-y-3 max-w-2xl mx-auto">
-            <p className="text-xs font-mono uppercase tracking-widest text-violet-400">
-              System Architecture & Capabilities
-            </p>
-            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-white">
-              Engineered for Cognitive Clarity
-            </h2>
-            <p className="text-sm text-[#A1A1AA]">
-              Every module is designed to eliminate cognitive friction and convert passive viewing
-              into searchable intelligence.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {/* Feature 1 */}
-            <div className="p-6 rounded-3xl bg-[#111111] border border-[#27272A] hover:border-violet-500/50 transition-all group space-y-4">
-              <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-violet-400 group-hover:scale-105 transition-transform">
-                <FileText className="w-6 h-6" />
-              </div>
-              <h3 className="text-base font-semibold text-white">Intelligent Summaries</h3>
-              <p className="text-xs text-[#A1A1AA] leading-relaxed">
-                Multi-paragraph executive synthesis highlighting core arguments, conclusions, and
-                contextual nuances without information loss.
-              </p>
-            </div>
-
-            {/* Feature 2 */}
-            <div className="p-6 rounded-3xl bg-[#111111] border border-[#27272A] hover:border-violet-500/50 transition-all group space-y-4">
-              <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-violet-400 group-hover:scale-105 transition-transform">
-                <Bookmark className="w-6 h-6" />
-              </div>
-              <h3 className="text-base font-semibold text-white">Searchable Chapters</h3>
-              <p className="text-xs text-[#A1A1AA] leading-relaxed">
-                Autonomous thematic boundary detection dividing long lectures and keynotes into
-                exact chronological, seekable segments.
-              </p>
-            </div>
-
-            {/* Feature 3 */}
-            <div className="p-6 rounded-3xl bg-[#111111] border border-[#27272A] hover:border-violet-500/50 transition-all group space-y-4">
-              <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-violet-400 group-hover:scale-105 transition-transform">
-                <MessageSquare className="w-6 h-6" />
-              </div>
-              <h3 className="text-base font-semibold text-white">Source-Linked Answers</h3>
-              <p className="text-xs text-[#A1A1AA] leading-relaxed">
-                Conversational RAG assistant grounded directly in the video. Clickable citations
-                jump the player directly to the exact millisecond.
-              </p>
-            </div>
-
-            {/* Feature 4 */}
-            <div className="p-6 rounded-3xl bg-[#111111] border border-[#27272A] hover:border-violet-500/50 transition-all group space-y-4">
-              <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-violet-400 group-hover:scale-105 transition-transform">
-                <Search className="w-6 h-6" />
-              </div>
-              <h3 className="text-base font-semibold text-white">Timestamped Transcripts</h3>
-              <p className="text-xs text-[#A1A1AA] leading-relaxed">
-                Sub-second speech-to-text with speaker identification, keyword filtering, and
-                continuous playback synchronization.
-              </p>
-            </div>
-
-            {/* Feature 5 */}
-            <div className="p-6 rounded-3xl bg-[#111111] border border-[#27272A] hover:border-violet-500/50 transition-all group space-y-4">
-              <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-violet-400 group-hover:scale-105 transition-transform">
-                <Layers className="w-6 h-6" />
-              </div>
-              <h3 className="text-base font-semibold text-white">Visual Scene & OCR Analysis</h3>
-              <p className="text-xs text-[#A1A1AA] leading-relaxed">
-                Recognizes architecture diagrams, IDE code editors, and presentation slides,
-                extracting on-screen code and bullet points.
-              </p>
-            </div>
-
-            {/* Feature 6 */}
-            <div className="p-6 rounded-3xl bg-[#111111] border border-[#27272A] hover:border-violet-500/50 transition-all group space-y-4">
-              <div className="w-12 h-12 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-violet-400 group-hover:scale-105 transition-transform">
-                <Cpu className="w-6 h-6" />
-              </div>
-              <h3 className="text-base font-semibold text-white">Smart Notes & Bookmarks</h3>
-              <p className="text-xs text-[#A1A1AA] leading-relaxed">
-                Capture thoughts with timestamp pinning, export reports to clean Markdown or JSON,
-                and curate your personal knowledge library.
-              </p>
+          {/* Central 3D Intelligence Orbit Graphic */}
+          <div className="lg:col-span-6 relative h-[440px] sm:h-[500px] w-full flex items-center justify-center">
+            <div className="w-full h-full rounded-3xl border border-[#1A1A22] bg-[#050508]/60 backdrop-blur-sm overflow-hidden relative shadow-2xl">
+              <VyoraIntelligenceOrbit scale={1.05} stage={storyStage} />
             </div>
           </div>
         </div>
       </section>
 
-      {/* 4. How It Works (3 Steps) */}
-      <section id="how-it-works" className="py-24 px-6 border-t border-[#27272A]/70 bg-[#050505]">
-        <div className="max-w-7xl mx-auto space-y-16">
-          <div className="text-center space-y-3 max-w-2xl mx-auto">
-            <p className="text-xs font-mono uppercase tracking-widest text-violet-400">
-              Pipeline Execution
-            </p>
-            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-white">
-              Three Steps to Deep Knowledge
-            </h2>
-            <p className="text-sm text-[#A1A1AA]">
-              Effortlessly convert hours of complex media into interactive cognitive maps.
-            </p>
+      {/* ------------------------------------------------------------- */}
+      {/* 3. SECTION 02 — CAPABILITIES (ORDO [ 01 / INTELLIGENCE CAPABILITIES ]) */}
+      {/* ------------------------------------------------------------- */}
+      <section id="capabilities" className="py-24 px-6 max-w-7xl mx-auto w-full border-t border-[#1A1A22]">
+        <div className="space-y-4 max-w-2xl mb-14 text-left">
+          <div className="inline-flex items-center gap-2 text-[10px] font-mono tracking-widest text-[#71717A] uppercase">
+            <span>[ 01 / INTELLIGENCE CAPABILITIES ]</span>
           </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 relative">
-            {/* Step 1 */}
-            <div className="p-8 rounded-3xl bg-[#0A0A0A] border border-[#27272A] space-y-4 relative">
-              <div className="w-10 h-10 rounded-xl bg-[#151515] border border-zinc-800 flex items-center justify-center text-xs font-mono text-violet-400 font-bold">
-                01
-              </div>
-              <h3 className="text-lg font-bold text-white">Import Your Video</h3>
-              <p className="text-xs text-[#A1A1AA] leading-relaxed">
-                Upload your MP4, WebM, MOV, or audio recording, or paste any supported video link.
-                Files are validated and securely streamed.
-              </p>
-            </div>
-
-            {/* Step 2 */}
-            <div className="p-8 rounded-3xl bg-[#0A0A0A] border border-[#27272A] space-y-4 relative">
-              <div className="w-10 h-10 rounded-xl bg-[#151515] border border-zinc-800 flex items-center justify-center text-xs font-mono text-violet-400 font-bold">
-                02
-              </div>
-              <h3 className="text-lg font-bold text-white">Extract Its Intelligence</h3>
-              <p className="text-xs text-[#A1A1AA] leading-relaxed">
-                Multimodal reasoning analyzes audio, speech patterns, and visual frames in an
-                interleaved attention space via Gemini 2.0 Flash.
-              </p>
-            </div>
-
-            {/* Step 3 */}
-            <div className="p-8 rounded-3xl bg-[#0A0A0A] border border-[#27272A] space-y-4 relative">
-              <div className="w-10 h-10 rounded-xl bg-[#151515] border border-zinc-800 flex items-center justify-center text-xs font-mono text-violet-400 font-bold">
-                03
-              </div>
-              <h3 className="text-lg font-bold text-white">Explore Every Insight</h3>
-              <p className="text-xs text-[#A1A1AA] leading-relaxed">
-                Navigate timestamped chapters, search verbatim dialogue, explore 3D knowledge maps,
-                and converse with source-grounded citations.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* 5. Interactive Product Preview */}
-      <section id="preview" className="py-24 px-6 border-t border-[#27272A]/70 bg-[#0A0A0A]">
-        <div className="max-w-6xl mx-auto space-y-10">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div>
-              <span className="text-[10px] font-mono uppercase tracking-widest text-[#71717A] bg-[#151515] px-2.5 py-1 rounded-full border border-[#27272A]">
-                Sample Workspace Preview (Simulated Content)
-              </span>
-              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-white mt-2">
-                The AI Video Workspace in Action
-              </h2>
-            </div>
-            <button
-              onClick={onLaunchDemo}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold transition-all shadow-lg shadow-violet-600/25"
-            >
-              <Play className="w-3.5 h-3.5 fill-current" />
-              <span>Launch Live Interactive Experience</span>
-            </button>
-          </div>
-
-          {/* Mock Workspace Container */}
-          <div className="rounded-3xl bg-[#050505] border border-[#27272A] shadow-2xl overflow-hidden p-6 space-y-6">
-            <div className="flex items-center justify-between pb-4 border-b border-[#27272A]">
-              <div className="flex items-center gap-3">
-                <span className="w-3 h-3 rounded-full bg-red-500/80" />
-                <span className="w-3 h-3 rounded-full bg-amber-500/80" />
-                <span className="w-3 h-3 rounded-full bg-emerald-500/80" />
-                <span className="text-xs font-mono text-[#71717A] ml-2">
-                  Keynote: Architecting Real-Time Multimodal AI Systems [Sample Preview]
-                </span>
-              </div>
-              <span className="text-xs font-mono text-violet-400">Duration: 00:45</span>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
-              {/* Left Column Preview */}
-              <div className="md:col-span-4 space-y-3">
-                <div className="text-xs font-semibold text-[#D4D4D8]">Chapters (4 Detected)</div>
-                <div className="p-3 rounded-2xl bg-[#111111] border border-violet-500/40 text-xs space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-white">01. Evolution of Multimodal AI</span>
-                    <span className="font-mono text-violet-400">00:00</span>
-                  </div>
-                  <p className="text-[11px] text-[#A1A1AA]">Comparison of cascading ASR/OCR vs. unified models.</p>
-                </div>
-                <div className="p-3 rounded-2xl bg-[#0A0A0A] border border-[#27272A] text-xs space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-[#A1A1AA]">02. Core Architecture</span>
-                    <span className="font-mono text-[#71717A]">00:12</span>
-                  </div>
-                  <p className="text-[11px] text-[#71717A]">Direct video ingestion and tokenization.</p>
-                </div>
-              </div>
-
-              {/* Center Column Preview */}
-              <div className="md:col-span-5 space-y-4">
-                <div className="aspect-video rounded-2xl bg-[#111111] border border-[#27272A] flex flex-col items-center justify-center p-6 text-center">
-                  <div className="w-12 h-12 rounded-full bg-violet-600/20 border border-violet-500/30 flex items-center justify-center text-violet-400 mb-3">
-                    <Play className="w-6 h-6 fill-current" />
-                  </div>
-                  <p className="text-xs font-semibold text-white">Synchronized Media Player</p>
-                  <p className="text-[10px] text-[#71717A] mt-1">HTTP 206 Partial Content Range Streaming</p>
-                </div>
-              </div>
-
-              {/* Right Column Preview */}
-              <div className="md:col-span-3 space-y-3">
-                <div className="text-xs font-semibold text-[#D4D4D8]">Ask AI with Citations</div>
-                <div className="p-3 rounded-2xl bg-[#111111] border border-[#27272A] text-xs space-y-2">
-                  <p className="text-[#A1A1AA]">"What latency drop was achieved?"</p>
-                  <div className="p-2 rounded-xl bg-[#050505] border border-zinc-800 text-[11px] text-[#D4D4D8]">
-                    Latency dropped from 4.2s to 850ms when caching context.
-                    <div className="mt-1.5 inline-block text-[10px] font-mono px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-300">
-                      Citation: [00:31]
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* 6. Final CTA */}
-      <section className="py-24 px-6 border-t border-[#27272A]/70 bg-[#050505] text-center relative overflow-hidden">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[300px] bg-violet-600/10 rounded-full blur-[130px] pointer-events-none" />
-        <div className="max-w-3xl mx-auto space-y-6 relative">
-          <h2 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-white">
-            Stop Searching Through Hours.
-            <br />
-            <span className="text-violet-400">Start Finding Answers.</span>
+          <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white font-sans">
+            Everything inside your video. <br />
+            <span className="text-[#A1A1AA]">Nothing left unexplored.</span>
           </h2>
-          <p className="text-sm sm:text-base text-[#A1A1AA] max-w-xl mx-auto">
-            Experience the intelligence of VYORA AI today. Free to get started with zero complex setup.
+          <p className="text-sm text-[#71717A] font-normal leading-relaxed">
+            One connected intelligence layer for extracting actionable knowledge from raw media.
           </p>
-          <div className="pt-2 flex items-center justify-center gap-4">
-            <button
-              onClick={onGetStarted}
-              className="flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-white text-black hover:bg-zinc-200 text-xs font-bold transition-all shadow-xl"
+        </div>
+
+        {/* 6 Capability Bento Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {capabilities.map((cap) => (
+            <div
+              key={cap.index}
+              className="p-6 rounded-2xl bg-[#07070A] border border-[#1C1C24] hover:border-zinc-700 transition-all duration-200 space-y-3 group"
             >
-              <span>Start Exploring</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-            <button
-              onClick={onLaunchDemo}
-              className="px-6 py-3.5 rounded-2xl bg-[#111111] hover:bg-[#151515] border border-[#27272A] text-xs font-semibold text-[#D4D4D8] transition-colors"
+              <div className="flex items-center justify-between text-[10px] font-mono">
+                <span className="text-violet-400 font-bold">{cap.index}</span>
+                <span className="text-[#52525B] px-2 py-0.5 rounded bg-[#101015] border border-[#1E1E26]">
+                  {cap.tag}
+                </span>
+              </div>
+              <h3 className="text-base font-bold text-white group-hover:text-violet-200 transition-colors">
+                {cap.title}
+              </h3>
+              <p className="text-xs text-[#71717A] leading-relaxed">
+                {cap.desc}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------------- */}
+      {/* 4. SECTION 03 — CONNECTED WORKFLOW (ORDO [ 02 / CONNECTED FLOW ]) */}
+      {/* ------------------------------------------------------------- */}
+      <section id="how-it-works" className="py-24 px-6 max-w-7xl mx-auto w-full border-t border-[#1A1A22]">
+        <div className="space-y-4 max-w-2xl mb-14 text-left">
+          <div className="inline-flex items-center gap-2 text-[10px] font-mono tracking-widest text-[#71717A] uppercase">
+            <span>[ 02 / CONNECTED FLOW ]</span>
+          </div>
+          <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white font-sans">
+            From raw video to structured knowledge.
+          </h2>
+          <p className="text-sm text-[#71717A] leading-relaxed">
+            Four synchronized intelligence phases built for fidelity, speed, and zero hallucination.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {workflowSteps.map((ws) => (
+            <div
+              key={ws.step}
+              className="p-6 rounded-2xl bg-[#07070A] border border-[#1C1C24] space-y-3 relative group"
             >
-              Launch Demo
-            </button>
+              <div className="flex items-center justify-between">
+                <span className="text-2xl font-bold font-mono text-[#26262E] group-hover:text-violet-500/50 transition-colors">
+                  {ws.step}
+                </span>
+                <span className="text-[10px] font-mono text-[#52525B]">PHASE {ws.step}</span>
+              </div>
+              <h3 className="text-sm font-bold text-white tracking-wide uppercase font-mono">
+                {ws.title}
+              </h3>
+              <span className="text-[11px] font-semibold text-violet-400 block">
+                {ws.subtitle}
+              </span>
+              <p className="text-xs text-[#71717A] leading-relaxed">
+                {ws.desc}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------------- */}
+      {/* 5. SECTION 04 — INTELLIGENCE ENGINE (ORDO [ 03 / SYSTEM STORYTELLING ]) */}
+      {/* ------------------------------------------------------------- */}
+      <section id="engine" className="py-24 px-6 max-w-7xl mx-auto w-full border-t border-[#1A1A22]">
+        <div className="space-y-4 max-w-2xl mb-12 text-left">
+          <div className="inline-flex items-center gap-2 text-[10px] font-mono tracking-widest text-[#71717A] uppercase">
+            <span>[ 03 / INTELLIGENCE ENGINE ]</span>
+          </div>
+          <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white font-sans">
+            Every frame. <br />
+            <span className="text-[#A1A1AA]">A deeper understanding.</span>
+          </h2>
+          <p className="text-sm text-[#71717A] leading-relaxed">
+            Observe the architectural journey from raw video frames to an interconnected knowledge constellation.
+          </p>
+        </div>
+
+        {/* Interactive 4-Stage Cinematic Controller */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+          {/* Stage Controls & Narrative Cards */}
+          <div className="lg:col-span-5 space-y-3">
+            {storytellingStages.map((stg) => {
+              const isSelected = storyStage === stg.num;
+              return (
+                <div
+                  key={stg.num}
+                  onClick={() => setStoryStage(stg.num)}
+                  className={`p-4 rounded-2xl border cursor-pointer transition-all duration-200 text-left ${
+                    isSelected
+                      ? 'bg-[#0E0E14] border-violet-500/60 shadow-lg'
+                      : 'bg-[#060608] border-[#1C1C24] hover:border-zinc-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between text-[10px] font-mono mb-1.5">
+                    <span className={isSelected ? 'text-violet-400 font-bold' : 'text-[#52525B]'}>
+                      {stg.label} · {stg.title}
+                    </span>
+                    {isSelected && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
+                    )}
+                  </div>
+                  <h4 className="text-sm font-bold text-white mb-1">
+                    {stg.headline}
+                  </h4>
+                  <p className="text-xs text-[#71717A] leading-relaxed">
+                    {stg.description}
+                  </p>
+                  {isSelected && (
+                    <p className="text-[11px] font-mono text-[#A1A1AA] pt-2 border-t border-[#1F1F2A] mt-2">
+                      {stg.details}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Synchronized 3D Stage Canvas */}
+          <div className="lg:col-span-7 h-[420px] sm:h-[480px] rounded-3xl border border-[#1C1C24] bg-[#050508] relative overflow-hidden shadow-2xl">
+            <VyoraIntelligenceOrbit stage={storyStage} scale={1.1} />
           </div>
         </div>
       </section>
 
-      {/* 7. Footer */}
-      <footer className="py-12 px-6 border-t border-[#27272A] bg-[#050505] text-xs text-[#71717A]">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-sm text-white">VYORA AI</span>
-            <span>•</span>
-            <span>Video & Media Knowledge Intelligence</span>
+      {/* ------------------------------------------------------------- */}
+      {/* 6. SECTION 05 — PLATFORM CAPABILITIES (ORDO [ 04 / PLATFORM ]) */}
+      {/* ------------------------------------------------------------- */}
+      <section id="platform" className="py-24 px-6 max-w-7xl mx-auto w-full border-t border-[#1A1A22]">
+        <div className="space-y-4 max-w-2xl mb-14 text-left">
+          <div className="inline-flex items-center gap-2 text-[10px] font-mono tracking-widest text-[#71717A] uppercase">
+            <span>[ 04 / PLATFORM SPECIFICATIONS ]</span>
           </div>
+          <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white font-sans">
+            Built to understand the media you work with.
+          </h2>
+          <p className="text-sm text-[#71717A] leading-relaxed">
+            Real, deployed capabilities powering the VYORA video intelligence architecture.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-left">
+          <div className="p-6 rounded-2xl bg-[#07070A] border border-[#1C1C24] space-y-3">
+            <Globe className="w-5 h-5 text-violet-400" />
+            <h3 className="text-sm font-bold text-white">Universal Media Ingestion</h3>
+            <p className="text-xs text-[#71717A] leading-relaxed">
+              Native support for MP4, WebM, MOV, MKV, AVI, TS files, and public YouTube URLs. Direct byte streaming preserves server memory.
+            </p>
+          </div>
+
+          <div className="p-6 rounded-2xl bg-[#07070A] border border-[#1C1C24] space-y-3">
+            <Cpu className="w-5 h-5 text-violet-400" />
+            <h3 className="text-sm font-bold text-white">Intelligent Model Failover</h3>
+            <p className="text-xs text-[#71717A] leading-relaxed">
+              Official Gemini 2.0 Flash engine with automatic backoff and failover to Gemini 1.5 Flash. Uploaded file state is 100% preserved.
+            </p>
+          </div>
+
+          <div className="p-6 rounded-2xl bg-[#07070A] border border-[#1C1C24] space-y-3">
+            <Clock className="w-5 h-5 text-violet-400" />
+            <h3 className="text-sm font-bold text-white">Timestamp Seeking & Sync</h3>
+            <p className="text-xs text-[#71717A] leading-relaxed">
+              Clickable chapter and key moment seeking. Synchronizes active video playback with transcript dialogue and spatial timeline.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------------- */}
+      {/* 7. SECTION 06 — INTERACTIVE STUDIO EXPERIENCE (ORDO [ 05 / EXPERIENCE ]) */}
+      {/* ------------------------------------------------------------- */}
+      <section id="experience" className="py-24 px-6 max-w-7xl mx-auto w-full border-t border-[#1A1A22]">
+        <div className="space-y-4 max-w-2xl mb-12 text-left">
+          <div className="inline-flex items-center gap-2 text-[10px] font-mono tracking-widest text-[#71717A] uppercase">
+            <span>[ 05 / STUDIO EXPERIENCE ]</span>
+          </div>
+          <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white font-sans">
+            See what your video contains.
+          </h2>
+          <p className="text-sm text-[#71717A] leading-relaxed">
+            Test the live studio interface. Click any chapter below to seek the video player to that timestamp.
+          </p>
+        </div>
+
+        {/* Live Interactive Preview Box */}
+        <div className="p-4 sm:p-6 rounded-3xl bg-[#060609] border border-[#1F1F28] shadow-2xl space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+            {/* Player Preview (7 cols) */}
+            <div className="lg:col-span-7 space-y-3">
+              <VideoPlayer
+                src="backend/samples/big_buck_bunny.mp4"
+                mediaType="video"
+                title="Big Buck Bunny (Sample Analysis)"
+                onTimeUpdate={(t) => setDemoTime(t)}
+              />
+              <div className="p-4 rounded-2xl bg-[#09090D] border border-[#1A1A22] text-left">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-mono text-violet-400 uppercase tracking-widest">
+                    Live Synthesis Output
+                  </span>
+                  <span className="text-[10px] font-mono text-[#71717A]">
+                    T = {Math.floor(demoTime / 60)}:{String(Math.floor(demoTime % 60)).padStart(2, '0')}
+                  </span>
+                </div>
+                <h4 className="text-xs font-bold text-white mt-1">Executive Summary</h4>
+                <p className="text-xs text-[#71717A] leading-relaxed mt-1">
+                  An open-source computer-animated comedy film highlighting visual frame segmentation, character interactions, and acoustic soundtrack dynamics.
+                </p>
+              </div>
+            </div>
+
+            {/* Chapters & Dialogue (5 cols) */}
+            <div className="lg:col-span-5 space-y-3 text-left">
+              <span className="text-[10px] font-mono text-[#71717A] uppercase tracking-wider block">
+                Timestamped Chapters (Click to Seek)
+              </span>
+
+              <div className="space-y-2">
+                {demoChapters.map((ch, i) => (
+                  <div
+                    key={i}
+                    className="p-3.5 rounded-xl bg-[#09090D] border border-[#1C1C24] hover:border-violet-500/50 cursor-pointer transition-colors"
+                  >
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="font-bold text-white">{ch.title}</span>
+                      <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-[#13131A] text-violet-300">
+                        {ch.formatted}
+                      </span>
+                    </div>
+                    <p className="text-xs text-[#71717A] leading-relaxed">{ch.summary}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Grounded Q&A Preview */}
+              <div className="p-3.5 rounded-xl bg-[#09090D] border border-[#1C1C24] space-y-2">
+                <div className="flex items-center gap-2 text-[10px] font-mono text-violet-400">
+                  <MessageSquare className="w-3 h-3" />
+                  <span>GROUNDED AI Q&A CITATION</span>
+                </div>
+                <p className="text-xs text-[#D4D4D8] italic">
+                  "At timestamp [00:12], the protagonist wakes up in the meadow and greets the forest wildlife."
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------------- */}
+      {/* 8. SECTION 07 — FINAL CALL TO ACTION (ORDO CLOSING) */}
+      {/* ------------------------------------------------------------- */}
+      <section className="py-24 px-6 max-w-5xl mx-auto w-full border-t border-[#1A1A22] text-center space-y-6">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#0A0A0E] border border-[#202028] text-[10px] font-mono text-[#A1A1AA] uppercase tracking-widest">
+          <span>AI INFRASTRUCTURE</span>
+        </div>
+
+        <h2 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-white font-sans">
+          Your videos. <br />
+          <span className="text-[#A1A1AA]">Fully understood.</span>
+        </h2>
+
+        <p className="text-sm text-[#71717A] max-w-md mx-auto leading-relaxed">
+          Turn hours of video into structured knowledge you can explore, search, and understand.
+        </p>
+
+        <div className="pt-2">
+          <button
+            type="button"
+            onClick={onGetStarted}
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl bg-white text-black hover:bg-zinc-200 text-xs font-bold transition-all shadow-xl shadow-white/5"
+          >
+            <span>Start Analyzing</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------------- */}
+      {/* 9. SECTION 08 — MINIMAL FOOTER */}
+      {/* ------------------------------------------------------------- */}
+      <footer className="mt-auto py-12 px-6 border-t border-[#1A1A22] bg-[#020203]">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-6 text-xs text-[#52525B] font-mono">
+          <div className="flex items-center gap-3">
+            <span className="font-bold text-white">VYORA AI</span>
+            <span>·</span>
+            <span>AI-Powered Video & Media Knowledge Extractor</span>
+          </div>
+
           <div className="flex items-center gap-6">
-            <a href="https://github.com/Kshaurya-07/Video-Media-Knowledge-Extractor" target="_blank" rel="noreferrer" className="hover:text-white transition-colors">
-              GitHub Repository
+            <a
+              href="https://github.com/Kshaurya-07/Video-Media-Knowledge-Extractor"
+              target="_blank"
+              rel="noreferrer"
+              className="hover:text-white transition-colors flex items-center gap-1"
+            >
+              <span>GitHub</span>
+              <ExternalLink className="w-3 h-3" />
             </a>
-            <span className="text-[#27272A]">|</span>
+            <span>·</span>
             <span>MIT License</span>
-            <span className="text-[#27272A]">|</span>
-            <span>Google Gemini 2.0 Flash</span>
+            <span>·</span>
+            <span className="text-violet-400">Google Gemini 2.0 Flash</span>
           </div>
         </div>
       </footer>

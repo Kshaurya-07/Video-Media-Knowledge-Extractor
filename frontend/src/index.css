@@ -4,25 +4,38 @@
 
 @layer base {
   body {
-    background-color: #050505;
+    background-color: #030304;
     color: #FAFAFA;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: 'Geist', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     overflow-x: hidden;
   }
 }
 
+/* Technical grid background pattern inspired by ORDO */
+.bg-grid-pattern {
+  background-size: 32px 32px;
+  background-image: 
+    linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+}
+
+.bg-dot-pattern {
+  background-size: 24px 24px;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 0);
+}
+
 /* Custom cinematic scrollbars */
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 4px;
+  height: 4px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #050505;
+  background: #030304;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #27272A;
+  background: #26262E;
   border-radius: 9999px;
 }
 
@@ -32,9 +45,31 @@
 
 /* Restrained cinematic glows */
 .glow-subtle-violet {
-  box-shadow: 0 0 40px -10px rgba(139, 92, 246, 0.15);
+  box-shadow: 0 0 50px -10px rgba(139, 92, 246, 0.12);
 }
 
 .glow-border-violet {
-  border-color: rgba(139, 92, 246, 0.4);
+  border-color: rgba(139, 92, 246, 0.35);
+}
+
+/* Glass panel */
+.glass-panel {
+  background: rgba(10, 10, 14, 0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+/* Corner plus markers for technical grids */
+.corner-tick {
+  position: relative;
+}
+.corner-tick::before {
+  content: "+";
+  position: absolute;
+  top: -6px;
+  left: -5px;
+  font-family: monospace;
+  font-size: 10px;
+  color: #52525B;
 }
