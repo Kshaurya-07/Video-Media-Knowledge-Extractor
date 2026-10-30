@@ -105,9 +105,9 @@ async def test_extract_media_knowledge_uses_upload_file_config():
         assert mock_client.files.upload.called
         assert mock_client.models.generate_content.called
 
-        # Verify model used for inference is the migrated DEFAULT_MODEL (gemini-3.8-flash)
+        # Verify model used for inference is the migrated DEFAULT_MODEL (gemini-2.0-flash)
         gen_kwargs = mock_client.models.generate_content.call_args.kwargs
-        assert gen_kwargs["model"] == "gemini-3.8-flash"
+        assert gen_kwargs["model"] == "gemini-2.0-flash"
 
         # Verify upload was called with config=types.UploadFileConfig and NOT mime_type keyword
         call_kwargs = mock_client.files.upload.call_args.kwargs
@@ -200,10 +200,10 @@ def test_clean_json_text():
 # ==============================================================================
 # 6. MODEL MIGRATION & ERROR MAPPING TESTS
 # ==============================================================================
-def test_default_model_is_gemini_3_8_flash():
-    """Ensure the centralized default model is configured to gemini-3.8-flash."""
-    assert DEFAULT_MODEL == "gemini-3.8-flash"
-    assert "gemini-2.5-flash" not in DEFAULT_MODEL
+def test_default_model_is_gemini_2_0_flash():
+    """Ensure the centralized default model is configured to gemini-2.0-flash."""
+    assert DEFAULT_MODEL == "gemini-2.0-flash"
+    assert "gemini-3.8-flash" not in DEFAULT_MODEL
 
 
 def test_map_gemini_error_404_model_not_found():
@@ -211,7 +211,7 @@ def test_map_gemini_error_404_model_not_found():
     err = Exception("404 NOT_FOUND. {'error': {'code': 404, 'message': 'This model models/gemini-2.5-flash is no longer available to new users.'}}")
     exc = map_gemini_error(err, action="Extraction")
     assert exc.status_code == 404
-    assert "gemini-3.8-flash" in exc.detail
+    assert "gemini-2.0-flash" in exc.detail
     assert "not found or unavailable" in exc.detail
 
 

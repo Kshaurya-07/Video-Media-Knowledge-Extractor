@@ -30,7 +30,7 @@ export const MediaUploader: React.FC<MediaUploaderProps> = ({
       const meta = await uploadMedia(file);
       
       // 2. Extract knowledge using Gemini
-      setStatusText('Multimodal AI extraction in progress with Gemini 3.8 Flash...');
+      setStatusText('Multimodal AI extraction in progress with Gemini 2.0 Flash...');
       const result = await extractKnowledge(meta.file_id);
       
       setStatusText('Knowledge graph & transcript synthesized!');

@@ -15,9 +15,9 @@ def test_health_check_endpoint():
         data = response.json()
         assert data["status"] == "healthy"
         assert "VYORA AI" in data["service"]
-        assert data["model"] == "gemini-3.8-flash"
-        assert data["configured_model"] == "gemini-3.8-flash"
-        assert data["display_model"] == "Gemini 3.8 Flash"
+        assert data["model"] == "gemini-2.0-flash"
+        assert data["configured_model"] == "gemini-2.0-flash"
+        assert data["display_model"] == "Gemini 2.0 Flash"
 
 
 def test_readiness_endpoints():
@@ -49,8 +49,8 @@ def test_config_endpoint():
     assert response.status_code == 200
     data = response.json()
     assert data["provider"] == "Google Gemini"
-    assert data["configured_model"] == "gemini-3.8-flash"
-    assert data["display_model"] == "Gemini 3.8 Flash"
+    assert data["configured_model"] == "gemini-2.0-flash"
+    assert data["display_model"] == "Gemini 2.0 Flash"
     assert "api_key" not in data
 
 
@@ -61,8 +61,8 @@ def test_system_model_status_endpoint_no_key():
         assert response.status_code == 200
         data = response.json()
         assert data["provider"] == "Google Gemini"
-        assert data["configured_model"] == "gemini-3.8-flash"
-        assert data["display_model"] == "Gemini 3.8 Flash"
+        assert data["configured_model"] == "gemini-2.0-flash"
+        assert data["display_model"] == "Gemini 2.0 Flash"
         assert data["status"] == "pending_key"
         assert data["has_api_key"] is False
         assert data["model_verified"] is False
@@ -72,8 +72,8 @@ def test_system_model_status_endpoint_no_key():
 def test_system_model_status_endpoint_verified():
     """Verify system model status endpoint returns connected when model is verified."""
     mock_model = MagicMock()
-    mock_model.name = "models/gemini-3.8-flash"
-    mock_model.display_name = "Gemini 3.8 Flash"
+    mock_model.name = "models/gemini-2.0-flash"
+    mock_model.display_name = "Gemini 2.0 Flash"
     mock_model.supported_actions = ["generateContent"]
     mock_model.input_token_limit = 1048576
 
@@ -87,8 +87,8 @@ def test_system_model_status_endpoint_verified():
         assert response.status_code == 200
         data = response.json()
         assert data["provider"] == "Google Gemini"
-        assert data["configured_model"] == "gemini-3.8-flash"
-        assert data["display_model"] == "Gemini 3.8 Flash"
+        assert data["configured_model"] == "gemini-2.0-flash"
+        assert data["display_model"] == "Gemini 2.0 Flash"
         assert data["status"] == "connected"
         assert data["has_api_key"] is True
         assert data["model_verified"] is True

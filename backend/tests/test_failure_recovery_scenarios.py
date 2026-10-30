@@ -75,3 +75,235 @@ def test_scenario_stale_job_recovery_on_restart():
         row = cursor.fetchone()
         assert row["stage"] == "FAILED"
         assert "interrupted" in row["message"].lower() or "restart" in row["message"].lower()
+
+
+def test_scenario_curated_models_production_ready():
+    """Failure Scenario 6: Verify curated and default models contain real Google production models."""
+    from app.config import DEFAULT_MODEL
+    from app.services.model_discovery_service import CURATED_MULTIMODAL_MODELS, INCOMPATIBLE_NAME_PATTERNS
+
+    assert DEFAULT_MODEL == "gemini-2.0-flash"
+    assert "gemini-3.8-flash" not in CURATED_MULTIMODAL_MODELS
+    assert "gemini-2.0-flash" in CURATED_MULTIMODAL_MODELS
+    assert "gemini-1.5-flash" in CURATED_MULTIMODAL_MODELS
+    assert "gemini-1.5-pro" in CURATED_MULTIMODAL_MODELS
+    assert "gemini-3.8" in INCOMPATIBLE_NAME_PATTERNS
+
+
+@pytest.mark.asyncio
+async def test_scenario_gemini_503_failover_recovery():
+    """Failure Scenario 7: HTTP 503 triggers backoff and intelligent failover to next model without file loss."""
+    from google.genai import types
+    from app.services.gemini_extractor import extract_media_knowledge
+    from app.services.model_discovery_service import invalidate_model_cache
+
+    test_key = "test_503_failover_key"
+    invalidate_model_cache(test_key)
+
+    mock_file = MagicMock()
+    mock_file.name = "files/test_shared_file_ref_503"
+    mock_file.state = types.FileState.ACTIVE
+
+    # GenerateContent call sequence:
+    # 1. Overview with gemini-2.0-flash -> raises 503
+    # 2. Overview retry with gemini-2.0-flash -> raises 503
+    # -> Triggers failover to gemini-1.5-flash
+    # 3. Overview with gemini-1.5-flash -> succeeds
+    # 4. Chapters with gemini-1.5-flash -> succeeds
+    # 5. Transcript with gemini-1.5-flash -> succeeds
+
+    overview_json = '''{
+        "title": "503 Failover Recovery Test",
+        "duration_seconds": 60.0,
+        "duration_formatted": "01:00",
+        "overview": "Overview recovered after 503.",
+        "executive_summary": "Full summary recovered after failover.",
+        "key_takeaways": ["Takeaway 1"],
+        "action_items": [],
+        "sentiment_and_tone": {
+            "overall": "Analytical",
+            "energy_level": "Medium",
+            "communication_style": "Concise"
+        }
+    }'''
+
+    chapters_json = '''{
+        "chapters": [
+            {
+                "start_time": 0.0,
+                "start_time_formatted": "00:00",
+                "end_time": 60.0,
+                "end_time_formatted": "01:00",
+                "title": "Introduction",
+                "summary": "Chapter summary",
+                "key_moments": ["Moment 1"]
+            }
+        ]
+    }'''
+
+    transcript_json = '''{
+        "transcript": [
+            {
+                "start_time": 0.0,
+                "start_time_formatted": "00:00",
+                "end_time": 10.0,
+                "end_time_formatted": "00:10",
+                "speaker": "Speaker 1",
+                "text": "Hello world"
+            }
+        ],
+        "visual_scenes": [],
+        "entities": []
+    }'''
+
+    call_count = 0
+    models_called = []
+
+    def mock_generate_content(model, contents, config=None):
+        nonlocal call_count, models_called
+        call_count += 1
+        models_called.append(model)
+        if model == "gemini-2.0-flash":
+            # Simulate Google 503 Overloaded
+            raise Exception("503 The model is overloaded. Please try again later.")
+        elif model == "gemini-1.5-flash":
+            resp = MagicMock()
+            if len(models_called) <= 3:
+                resp.text = overview_json
+            elif len(models_called) == 4:
+                resp.text = chapters_json
+            else:
+                resp.text = transcript_json
+            return resp
+        raise Exception(f"Unexpected model called: {model}")
+
+    with patch("app.services.gemini_extractor.genai.Client") as mock_client_cls, \
+         patch("app.services.gemini_extractor.get_media_path") as mock_get_path, \
+         patch("app.services.gemini_extractor.get_cached_result", return_value=None), \
+         patch("app.services.gemini_extractor.save_cache_result"), \
+         patch("asyncio.sleep", return_value=None):
+
+        mock_path = MagicMock(spec=Path)
+        mock_path.exists.return_value = True
+        mock_path.name = "sample_503.mp4"
+        mock_path.suffix = ".mp4"
+        mock_path.stat.return_value.st_size = 1048576
+        mock_get_path.return_value = mock_path
+
+        mock_client = MagicMock()
+        mock_client.files.upload.return_value = mock_file
+        mock_client.models.generate_content.side_effect = mock_generate_content
+        mock_client_cls.return_value = mock_client
+
+        stages = []
+        def on_stage_cb(st, pct, msg):
+            stages.append((st, pct, msg))
+
+        result = await extract_media_knowledge(
+            file_id="test_media_503",
+            api_key=test_key,
+            on_stage=on_stage_cb,
+            job_id="job_503_test"
+        )
+
+        assert result is not None
+        # Must have fallen back to gemini-1.5-flash
+        assert result.selected_model == "gemini-1.5-flash"
+        assert result.model_selection_mode == "fallback"
+        assert len(result.fallback_history) >= 1
+        assert result.fallback_history[0]["from"] == "gemini-2.0-flash"
+        assert result.fallback_history[0]["to"] == "gemini-1.5-flash"
+        # File upload was NOT repeated (uploaded once)
+        assert mock_client.files.upload.call_count == 1
+        assert "503 The model is overloaded" in result.fallback_history[0]["reason"]
+
+
+@pytest.mark.asyncio
+async def test_scenario_gemini_404_immediate_failover():
+    """Failure Scenario 8: HTTP 404 (model not found) immediately fails over to next candidate."""
+    from google.genai import types
+    from app.services.gemini_extractor import extract_media_knowledge
+    from app.services.model_discovery_service import invalidate_model_cache
+
+    test_key = "test_404_failover_key"
+    invalidate_model_cache(test_key)
+
+    mock_file = MagicMock()
+    mock_file.name = "files/test_shared_file_ref_404"
+    mock_file.state = types.FileState.ACTIVE
+
+    overview_json = '''{
+        "title": "404 Immediate Failover Test",
+        "duration_seconds": 30.0,
+        "duration_formatted": "00:30",
+        "overview": "Overview after 404.",
+        "executive_summary": "Summary after 404.",
+        "key_takeaways": ["Takeaway 1"],
+        "action_items": [],
+        "sentiment_and_tone": {
+            "overall": "Optimistic",
+            "energy_level": "High",
+            "communication_style": "Engaging"
+        }
+    }'''
+
+    chapters_json = '''{
+        "chapters": []
+    }'''
+
+    transcript_json = '''{
+        "transcript": [],
+        "visual_scenes": [],
+        "entities": []
+    }'''
+
+    models_called = []
+
+    def mock_generate_content(model, contents, config=None):
+        nonlocal models_called
+        models_called.append(model)
+        if model == "gemini-2.0-flash":
+            raise Exception("404 models/gemini-2.0-flash is not found for project")
+        elif model == "gemini-1.5-flash":
+            resp = MagicMock()
+            if len([m for m in models_called if m == "gemini-1.5-flash"]) == 1:
+                resp.text = overview_json
+            elif len([m for m in models_called if m == "gemini-1.5-flash"]) == 2:
+                resp.text = chapters_json
+            else:
+                resp.text = transcript_json
+            return resp
+        raise Exception(f"Unexpected model: {model}")
+
+    with patch("app.services.gemini_extractor.genai.Client") as mock_client_cls, \
+         patch("app.services.gemini_extractor.get_media_path") as mock_get_path, \
+         patch("app.services.gemini_extractor.get_cached_result", return_value=None), \
+         patch("app.services.gemini_extractor.save_cache_result"), \
+         patch("asyncio.sleep", return_value=None):
+
+        mock_path = MagicMock(spec=Path)
+        mock_path.exists.return_value = True
+        mock_path.name = "sample_404.mp4"
+        mock_path.suffix = ".mp4"
+        mock_path.stat.return_value.st_size = 1048576
+        mock_get_path.return_value = mock_path
+
+        mock_client = MagicMock()
+        mock_client.files.upload.return_value = mock_file
+        mock_client.models.generate_content.side_effect = mock_generate_content
+        mock_client_cls.return_value = mock_client
+
+        result = await extract_media_knowledge(
+            file_id="test_media_404",
+            api_key=test_key,
+            job_id="job_404_test"
+        )
+
+        assert result is not None
+        assert result.selected_model == "gemini-1.5-flash"
+        assert result.model_selection_mode == "fallback"
+        assert len(result.fallback_history) >= 1
+        assert result.fallback_history[0]["from"] == "gemini-2.0-flash"
+        assert result.fallback_history[0]["to"] == "gemini-1.5-flash"
+        # Since 404 is an immediate failover, gemini-2.0-flash was called only ONCE before failing over
+        assert models_called.count("gemini-2.0-flash") == 1

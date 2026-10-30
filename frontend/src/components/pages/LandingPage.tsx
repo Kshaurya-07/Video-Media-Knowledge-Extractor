@@ -301,7 +301,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <h3 className="text-lg font-bold text-white">Extract Its Intelligence</h3>
               <p className="text-xs text-[#A1A1AA] leading-relaxed">
                 Multimodal reasoning analyzes audio, speech patterns, and visual frames in an
-                interleaved attention space via Gemini 3.8 Flash.
+                interleaved attention space via Gemini 2.0 Flash.
               </p>
             </div>
 
@@ -449,7 +449,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <span className="text-[#27272A]">|</span>
             <span>MIT License</span>
             <span className="text-[#27272A]">|</span>
-            <span>Google Gemini 3.8 Flash</span>
+            <span>Google Gemini 2.0 Flash</span>
           </div>
         </div>
       </footer>

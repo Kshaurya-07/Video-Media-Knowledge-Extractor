@@ -93,7 +93,7 @@ export const ModelStatusModal: React.FC<ModelStatusModalProps> = ({
                   Active Selected Model
                 </span>
                 <div className="text-base font-bold text-white mt-0.5 flex items-center gap-2">
-                  <span>{modelStatus?.display_model || 'Gemini 3.8 Flash'}</span>
+                  <span>{modelStatus?.display_model || 'Gemini 2.0 Flash'}</span>
                   {isConnected ? (
                     <CheckCircle className="w-4 h-4 text-emerald-400" />
                   ) : (
@@ -101,7 +101,7 @@ export const ModelStatusModal: React.FC<ModelStatusModalProps> = ({
                   )}
                 </div>
                 <span className="text-xs font-mono text-violet-400">
-                  {modelStatus?.selected_model || modelStatus?.configured_model || 'gemini-3.8-flash'}
+                  {modelStatus?.selected_model || modelStatus?.configured_model || 'gemini-2.0-flash'}
                 </span>
               </div>
 

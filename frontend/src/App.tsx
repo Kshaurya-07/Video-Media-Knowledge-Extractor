@@ -364,9 +364,9 @@ export const App: React.FC = () => {
                       {connectionState === 'offline' || modelStatus?.status === 'offline'
                         ? 'API Offline'
                         : serverKeyConfigured
-                        ? `Server API Active · ${modelStatus?.display_model || systemConfig?.display_model || 'Gemini 3.8 Flash'}`
+                        ? `Server API Active · ${modelStatus?.display_model || systemConfig?.display_model || 'Gemini 2.0 Flash'}`
                         : hasApiKey
-                        ? `User Key Active · ${modelStatus?.display_model || systemConfig?.display_model || 'Gemini 3.8 Flash'}`
+                        ? `User Key Active · ${modelStatus?.display_model || systemConfig?.display_model || 'Gemini 2.0 Flash'}`
                         : 'Enter API Key'}
                     </span>
                     {connectionState === 'offline' || modelStatus?.status === 'offline' ? (

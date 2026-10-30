@@ -1,6 +1,7 @@
 import json
 import re
 import time
+import random
 import asyncio
 import logging
 from datetime import datetime
@@ -849,9 +850,11 @@ async def extract_media_knowledge(
         progress_label: str,
         max_tokens: int = 4096,
     ) -> Any:
-        nonlocal active_model, selection_mode, fallback_attempts
-        attempt = 0
-        while attempt < 2:
+        nonlocal active_model, selection_mode, fallback_attempts, fallback_history
+        stage_attempt = 0
+        max_same_model_attempts = 2  # 1 initial attempt + 1 retry with exponential backoff & jitter
+
+        while True:
             try:
                 return await _execute_gemini_stage(
                     stage_name=stage_name,
@@ -864,34 +867,253 @@ async def extract_media_knowledge(
                     max_tokens=max_tokens,
                 )
             except HTTPException as he:
+                # Fatal client errors that cannot succeed on any model or retry
                 if he.status_code in (401, 403):
                     raise he
-                attempt += 1
-                if attempt >= 2:
+                # Schema validation failure in our own code (500)
+                if he.status_code == 500 and "Schema validation error" in str(he.detail):
                     raise he
-                logger.warning(f"[VYORA AI] Retrying stage '{stage_name}' (attempt {attempt+1}/2)...")
-                await asyncio.sleep(2.0)
+
+                clean_err = str(he.detail)
+                err_lower = clean_err.lower()
+                status = he.status_code
+
+                is_not_found = (status == 404 or "not found" in err_lower or "not_found" in err_lower or "no longer available" in err_lower)
+                is_transient = (
+                    status in (429, 503, 504)
+                    or "unavailable" in err_lower
+                    or "overloaded" in err_lower
+                    or "rate limit" in err_lower
+                    or "quota" in err_lower
+                    or "deadline_exceeded" in err_lower
+                    or "timed out" in err_lower
+                )
+
+                if is_not_found:
+                    if fallback_attempts < max_fallbacks:
+                        fallback_attempts += 1
+                        old_model = active_model
+                        next_model = blacklist_failed_model(old_model, api_key=resolved_key, reason=clean_err)
+                        if next_model and next_model != old_model:
+                            fallback_history.append({"from": old_model, "to": next_model, "reason": clean_err})
+                            log_diagnostic(
+                                event="MODEL_FAILOVER",
+                                job_id=jid,
+                                correlation_id=cid,
+                                stage=stage_name,
+                                elapsed_seconds=time.time() - ext_start_time,
+                                status="WARN",
+                                model_id=next_model,
+                                details={"from": old_model, "to": next_model, "reason": clean_err, "stage": stage_name},
+                            )
+                            logger.warning(f"[VYORA AI] Model '{old_model}' not found (404). Auto-switching to '{next_model}'.")
+                            if on_stage:
+                                on_stage(stage_name, progress_start, f"Model '{format_model_display_name(old_model)}' unavailable. Auto-switching to '{format_model_display_name(next_model)}'...")
+                            active_model = next_model
+                            selection_mode = "fallback"
+                            stage_attempt = 0
+                            continue
+                    raise he
+
+                if is_transient:
+                    stage_attempt += 1
+                    if stage_attempt < max_same_model_attempts:
+                        # Exponential backoff with random jitter
+                        backoff = min(1.5 * (2 ** (stage_attempt - 1)) + random.uniform(0.5, 1.2), 8.0)
+                        logger.warning(f"[VYORA AI] Transient error ({status}) on model '{active_model}'. Retrying stage '{stage_name}' in {backoff:.1f}s (attempt {stage_attempt}/{max_same_model_attempts})...")
+                        if on_stage:
+                            on_stage(stage_name, progress_start, f"Gemini is temporarily busy ({status}). Retrying in {backoff:.1f}s...")
+                        await asyncio.sleep(backoff)
+                        continue
+                    else:
+                        # Retries on this model exhausted -> trigger intelligent failover!
+                        if fallback_attempts < max_fallbacks:
+                            fallback_attempts += 1
+                            old_model = active_model
+                            next_model = blacklist_failed_model(old_model, api_key=resolved_key, reason=f"Persistent {status} error: {clean_err}")
+                            if next_model and next_model != old_model:
+                                fallback_history.append({"from": old_model, "to": next_model, "reason": f"Persistent {status}"})
+                                log_diagnostic(
+                                    event="MODEL_FAILOVER",
+                                    job_id=jid,
+                                    correlation_id=cid,
+                                    stage=stage_name,
+                                    elapsed_seconds=time.time() - ext_start_time,
+                                    status="WARN",
+                                    model_id=next_model,
+                                    details={"from": old_model, "to": next_model, "status": status, "reason": clean_err, "stage": stage_name},
+                                )
+                                logger.info(f"[VYORA AI] Model '{old_model}' returned persistent {status}. Intelligently failing over to '{next_model}'...")
+                                if on_stage:
+                                    on_stage(stage_name, progress_start, f"Gemini {format_model_display_name(old_model)} is busy. Auto-switching to fallback candidate {format_model_display_name(next_model)}...")
+                                active_model = next_model
+                                selection_mode = "fallback"
+                                stage_attempt = 0
+                                await asyncio.sleep(1.0)
+                                continue
+                        raise he
+
+                # For empty response (502) or parse failure (500), try fallback if retries exhausted
+                stage_attempt += 1
+                if stage_attempt < max_same_model_attempts:
+                    logger.warning(f"[VYORA AI] Stage '{stage_name}' failed with {status}. Retrying in 2.0s...")
+                    await asyncio.sleep(2.0)
+                    continue
+                elif fallback_attempts < max_fallbacks:
+                    fallback_attempts += 1
+                    old_model = active_model
+                    next_model = blacklist_failed_model(old_model, api_key=resolved_key, reason=clean_err)
+                    if next_model and next_model != old_model:
+                        fallback_history.append({"from": old_model, "to": next_model, "reason": clean_err})
+                        log_diagnostic(
+                            event="MODEL_FAILOVER",
+                            job_id=jid,
+                            correlation_id=cid,
+                            stage=stage_name,
+                            elapsed_seconds=time.time() - ext_start_time,
+                            status="WARN",
+                            model_id=next_model,
+                            details={"from": old_model, "to": next_model, "reason": clean_err, "stage": stage_name},
+                        )
+                        logger.info(f"[VYORA AI] Model '{old_model}' produced {status}. Failing over to '{next_model}'...")
+                        if on_stage:
+                            on_stage(stage_name, progress_start, f"Switching AI model to {format_model_display_name(next_model)}...")
+                        active_model = next_model
+                        selection_mode = "fallback"
+                        stage_attempt = 0
+                        await asyncio.sleep(1.0)
+                        continue
+
+                raise he
+
             except Exception as e:
                 clean_err = sanitize_error_message(e)
                 err_lower = clean_err.lower()
 
-                if "401" in clean_err or "unauthenticated" in err_lower or "403" in clean_err or "permission_denied" in err_lower:
+                # Auth / permission failures: immediate fail
+                if "401" in clean_err or "unauthenticated" in err_lower or "api_key_invalid" in err_lower or "403" in clean_err or "permission_denied" in err_lower:
                     raise map_gemini_error(e, action="Extraction", model_name=active_model, is_youtube=is_youtube)
 
-                is_model_unavailable = ("404" in clean_err or "not_found" in err_lower or "no longer available" in err_lower)
-                if is_model_unavailable and fallback_attempts < max_fallbacks:
+                is_not_found = ("404" in clean_err or "not_found" in err_lower or "no longer available" in err_lower or "not found" in err_lower)
+                is_transient = (
+                    "503" in clean_err
+                    or "unavailable" in err_lower
+                    or "overloaded" in err_lower
+                    or "429" in clean_err
+                    or "resource_exhausted" in err_lower
+                    or "quota" in err_lower
+                    or "rate limit" in err_lower
+                    or "504" in clean_err
+                    or "deadline_exceeded" in err_lower
+                    or "timed out" in err_lower
+                )
+
+                if is_not_found:
+                    if fallback_attempts < max_fallbacks:
+                        fallback_attempts += 1
+                        old_model = active_model
+                        next_model = blacklist_failed_model(old_model, api_key=resolved_key, reason=clean_err)
+                        if next_model and next_model != old_model:
+                            fallback_history.append({"from": old_model, "to": next_model, "reason": clean_err})
+                            log_diagnostic(
+                                event="MODEL_FAILOVER",
+                                job_id=jid,
+                                correlation_id=cid,
+                                stage=stage_name,
+                                elapsed_seconds=time.time() - ext_start_time,
+                                status="WARN",
+                                model_id=next_model,
+                                details={"from": old_model, "to": next_model, "reason": clean_err, "stage": stage_name},
+                            )
+                            logger.warning(f"[VYORA AI] Model '{old_model}' not found (404). Failing over to '{next_model}'.")
+                            if on_stage:
+                                on_stage(stage_name, progress_start, f"Model '{format_model_display_name(old_model)}' not found. Auto-switching to '{format_model_display_name(next_model)}'...")
+                            active_model = next_model
+                            selection_mode = "fallback"
+                            stage_attempt = 0
+                            continue
+                    raise map_gemini_error(e, action="Extraction", model_name=active_model, is_youtube=is_youtube)
+
+                if is_transient:
+                    stage_attempt += 1
+                    if stage_attempt < max_same_model_attempts:
+                        # Extract Retry-After if present in exception
+                        retry_after = None
+                        if hasattr(e, "retry_after"):
+                            retry_after = getattr(e, "retry_after")
+                        elif hasattr(e, "response") and hasattr(e.response, "headers"):
+                            retry_after = e.response.headers.get("retry-after")
+
+                        if retry_after and str(retry_after).isdigit():
+                            backoff = min(float(retry_after) + random.uniform(0.2, 1.0), 10.0)
+                        else:
+                            backoff = min(1.5 * (2 ** (stage_attempt - 1)) + random.uniform(0.5, 1.2), 8.0)
+
+                        logger.warning(f"[VYORA AI] Transient error on model '{active_model}': {clean_err}. Retrying in {backoff:.1f}s (attempt {stage_attempt}/{max_same_model_attempts})...")
+                        if on_stage:
+                            on_stage(stage_name, progress_start, f"Gemini is temporarily busy. Retrying in {backoff:.1f}s...")
+                        await asyncio.sleep(backoff)
+                        continue
+                    else:
+                        # Retries on this model exhausted -> trigger intelligent failover!
+                        if fallback_attempts < max_fallbacks:
+                            fallback_attempts += 1
+                            old_model = active_model
+                            next_model = blacklist_failed_model(old_model, api_key=resolved_key, reason=clean_err)
+                            if next_model and next_model != old_model:
+                                fallback_history.append({"from": old_model, "to": next_model, "reason": clean_err})
+                                log_diagnostic(
+                                    event="MODEL_FAILOVER",
+                                    job_id=jid,
+                                    correlation_id=cid,
+                                    stage=stage_name,
+                                    elapsed_seconds=time.time() - ext_start_time,
+                                    status="WARN",
+                                    model_id=next_model,
+                                    details={"from": old_model, "to": next_model, "reason": clean_err, "stage": stage_name},
+                                )
+                                logger.info(f"[VYORA AI] Model '{old_model}' failed persistently ({clean_err}). Intelligently failing over to '{next_model}'...")
+                                if on_stage:
+                                    on_stage(stage_name, progress_start, f"Gemini {format_model_display_name(old_model)} is busy. Auto-switching to fallback candidate {format_model_display_name(next_model)}...")
+                                active_model = next_model
+                                selection_mode = "fallback"
+                                stage_attempt = 0
+                                await asyncio.sleep(1.0)
+                                continue
+                    raise map_gemini_error(e, action="Extraction", model_name=active_model, is_youtube=is_youtube)
+
+                # For unknown errors, retry once; if failed again, attempt failover or raise
+                stage_attempt += 1
+                if stage_attempt < max_same_model_attempts:
+                    logger.warning(f"[VYORA AI] Unexpected error on stage '{stage_name}': {clean_err}. Retrying once...")
+                    await asyncio.sleep(2.0)
+                    continue
+                elif fallback_attempts < max_fallbacks:
                     fallback_attempts += 1
-                    next_model = blacklist_failed_model(active_model, api_key=resolved_key, reason=clean_err)
-                    if next_model and next_model != active_model:
-                        fallback_history.append({"from": active_model, "to": next_model, "reason": clean_err})
+                    old_model = active_model
+                    next_model = blacklist_failed_model(old_model, api_key=resolved_key, reason=clean_err)
+                    if next_model and next_model != old_model:
+                        fallback_history.append({"from": old_model, "to": next_model, "reason": clean_err})
+                        log_diagnostic(
+                            event="MODEL_FAILOVER",
+                            job_id=jid,
+                            correlation_id=cid,
+                            stage=stage_name,
+                            elapsed_seconds=time.time() - ext_start_time,
+                            status="WARN",
+                            model_id=next_model,
+                            details={"from": old_model, "to": next_model, "reason": clean_err, "stage": stage_name},
+                        )
+                        logger.info(f"[VYORA AI] Failing over to next model '{next_model}' after unexpected error on '{old_model}'...")
+                        if on_stage:
+                            on_stage(stage_name, progress_start, f"Switching AI model to {format_model_display_name(next_model)}...")
                         active_model = next_model
                         selection_mode = "fallback"
+                        stage_attempt = 0
+                        await asyncio.sleep(1.0)
                         continue
 
-                attempt += 1
-                if attempt >= 2:
-                    raise map_gemini_error(e, action="Extraction", model_name=active_model, is_youtube=is_youtube)
-                await asyncio.sleep(2.0)
+                raise map_gemini_error(e, action="Extraction", model_name=active_model, is_youtube=is_youtube)
 
     # -------------------------------------------------------------
     # STAGE A: Core Overview & Executive Summary & Action Items
@@ -1055,6 +1277,7 @@ async def extract_media_knowledge(
         "created_at": datetime.now().isoformat(),
         "selected_model": active_model,
         "model_selection_mode": selection_mode,
+        "fallback_history": fallback_history,
         "source_url": source_url,
     }
 

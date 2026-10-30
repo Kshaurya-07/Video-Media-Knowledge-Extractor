@@ -117,11 +117,11 @@ export interface SystemConfig {
 }
 
 export function formatModelDisplay(modelId?: string): string {
-  if (!modelId) return 'Gemini 3.8 Flash';
-  if (modelId === 'gemini-3.8-flash') return 'Gemini 3.8 Flash';
+  if (!modelId) return 'Gemini 2.0 Flash';
   if (modelId === 'gemini-2.0-flash') return 'Gemini 2.0 Flash';
   if (modelId === 'gemini-1.5-flash') return 'Gemini 1.5 Flash';
   if (modelId === 'gemini-1.5-pro') return 'Gemini 1.5 Pro';
+  if (modelId === 'gemini-2.5-flash') return 'Gemini 2.5 Flash';
   return modelId
     .replace(/^models\//, '')
     .replace(/-/g, ' ')
@@ -135,7 +135,7 @@ export async function fetchSystemConfig(): Promise<SystemConfig> {
       const data = await res.json();
       return {
         provider: data.provider || 'Google Gemini',
-        configured_model: data.configured_model || 'gemini-3.8-flash',
+        configured_model: data.configured_model || 'gemini-2.0-flash',
         display_model: data.display_model || formatModelDisplay(data.configured_model),
         status: data.status || 'configured',
         has_api_key_configured: Boolean(data.has_api_key_configured),
@@ -151,7 +151,7 @@ export async function fetchSystemConfig(): Promise<SystemConfig> {
     const health = await fetch(`${API_BASE}/health`);
     if (health.ok) {
       const hData = await health.json();
-      const model = hData.configured_model || hData.model || 'gemini-3.8-flash';
+      const model = hData.configured_model || hData.model || 'gemini-2.0-flash';
       return {
         provider: hData.provider || 'Google Gemini',
         configured_model: model,
@@ -168,8 +168,8 @@ export async function fetchSystemConfig(): Promise<SystemConfig> {
 
   return {
     provider: 'Google Gemini',
-    configured_model: 'gemini-3.8-flash',
-    display_model: 'Gemini 3.8 Flash',
+    configured_model: 'gemini-2.0-flash',
+    display_model: 'Gemini 2.0 Flash',
     status: 'offline',
     has_api_key_configured: false,
     server_api_key_configured: false,
@@ -230,8 +230,8 @@ export async function fetchModelStatus(): Promise<ModelStatusResponse> {
       return {
         provider: data.provider || 'Google Gemini',
         selection_mode: data.selection_mode || 'automatic',
-        selected_model: data.selected_model || data.configured_model || 'gemini-3.8-flash',
-        configured_model: data.configured_model || 'gemini-3.8-flash',
+        selected_model: data.selected_model || data.configured_model || 'gemini-2.0-flash',
+        configured_model: data.configured_model || 'gemini-2.0-flash',
         display_model: data.display_model || formatModelDisplay(data.configured_model),
         status: data.status === 'connected' ? 'connected' : data.status === 'configured' ? 'configured' : 'pending_key',
         has_api_key: Boolean(data.has_api_key_configured),
@@ -248,9 +248,9 @@ export async function fetchModelStatus(): Promise<ModelStatusResponse> {
   return {
     provider: 'Google Gemini',
     selection_mode: 'automatic',
-    selected_model: 'gemini-3.8-flash',
-    configured_model: 'gemini-3.8-flash',
-    display_model: 'Gemini 3.8 Flash',
+    selected_model: 'gemini-2.0-flash',
+    configured_model: 'gemini-2.0-flash',
+    display_model: 'Gemini 2.0 Flash',
     status: 'offline',
     has_api_key: Boolean(customKey),
     server_api_key_configured: false,
@@ -288,7 +288,7 @@ export async function checkBackendHealth(): Promise<{
     if (!res.ok) throw new Error('Health check failed');
     return await res.json();
   } catch {
-    return { status: 'offline', has_api_key_configured: false, model: 'gemini-3.8-flash', display_model: 'Gemini 3.8 Flash' };
+    return { status: 'offline', has_api_key_configured: false, model: 'gemini-2.0-flash', display_model: 'Gemini 2.0 Flash' };
   }
 }
 

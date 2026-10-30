@@ -18,13 +18,12 @@ MODEL_CACHE_TTL_SECONDS = int(os.getenv("MODEL_CACHE_TTL_SECONDS", "3600"))
 
 # Curated multimodal fallback models (in preferential order) used if listing API is unreachable
 CURATED_MULTIMODAL_MODELS = [
-    "gemini-3.8-flash",
     "gemini-2.0-flash",
     "gemini-1.5-flash",
     "gemini-1.5-pro",
 ]
 
-# Patterns for models that CANNOT support multimodal video understanding or are deprecated
+# Patterns for models that CANNOT support multimodal video understanding or are deprecated/fictional
 INCOMPATIBLE_NAME_PATTERNS = [
     "embedding",
     "imagen",
@@ -36,7 +35,7 @@ INCOMPATIBLE_NAME_PATTERNS = [
     "gecko",
     "gemini-1.0-pro",
     "gemini-1.0-ultra",
-    "gemini-2.5-flash",
+    "gemini-3.8",
     "medlm",
 ]
 
@@ -113,14 +112,14 @@ def format_model_display_name(model_id: str, raw_display: Optional[str] = None) 
     """Provide a clean, human-readable display name for the model."""
     if raw_display and raw_display.strip():
         return raw_display.strip()
-    if model_id == "gemini-3.8-flash":
-        return "Gemini 3.8 Flash"
     if model_id == "gemini-2.0-flash":
         return "Gemini 2.0 Flash"
     if model_id == "gemini-1.5-flash":
         return "Gemini 1.5 Flash"
     if model_id == "gemini-1.5-pro":
         return "Gemini 1.5 Pro"
+    if model_id == "gemini-2.5-flash":
+        return "Gemini 2.5 Flash"
     return model_id.replace("-", " ").title()
 
 def assess_model_compatibility(
@@ -162,24 +161,18 @@ def assess_model_compatibility(
     # 6. Compute scoring tier for intelligent ranking
     # Flash models are prioritized for video processing: fast, massive 1M context, cost-efficient
     score = 500
-    if "3.8-flash" in mid_lower:
+    if "2.0-flash" in mid_lower:
         score = 1000
-    elif "2.5-flash" in mid_lower:
-        score = 950
-    elif "2.0-flash" in mid_lower:
-        score = 900
     elif "1.5-flash" in mid_lower:
-        score = 800
+        score = 900
     elif "flash" in mid_lower:
-        score = 750
-    elif "3.8-pro" in mid_lower:
-        score = 700
+        score = 800
     elif "2.0-pro" in mid_lower:
-        score = 650
+        score = 750
     elif "1.5-pro" in mid_lower:
-        score = 600
+        score = 700
     elif "pro" in mid_lower:
-        score = 550
+        score = 650
 
     return True, "Compatible for multimodal media understanding and structured generation", score
 

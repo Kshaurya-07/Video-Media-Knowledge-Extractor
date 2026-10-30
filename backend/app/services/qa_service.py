@@ -184,12 +184,20 @@ Conversation History:
                     active_model = next_model
                     continue
 
-            if ("429" in clean_err or "503" in clean_err) and fallback_attempts < 2:
-                fallback_attempts += 1
-                backoff = 2.0 * fallback_attempts
-                logger.warning(f"[VYORA AI] Q&A transient error ({clean_err}). Retrying in {backoff}s...")
-                await asyncio.sleep(backoff)
-                continue
+            if ("429" in clean_err or "503" in clean_err or "unavailable" in err_lower or "overloaded" in err_lower):
+                if fallback_attempts < 1:
+                    fallback_attempts += 1
+                    backoff = 2.0
+                    logger.warning(f"[VYORA AI] Q&A transient error ({clean_err}). Retrying in {backoff}s...")
+                    await asyncio.sleep(backoff)
+                    continue
+                elif fallback_attempts < max_fallbacks:
+                    fallback_attempts += 1
+                    next_model = blacklist_failed_model(active_model, api_key=resolved_key, reason=clean_err)
+                    if next_model and next_model != active_model:
+                        logger.warning(f"[VYORA AI] Q&A Model '{active_model}' returned 503/429. Failing over to '{next_model}'")
+                        active_model = next_model
+                        continue
 
             raise map_gemini_error(e, action="Q&A generation", model_name=active_model)
 

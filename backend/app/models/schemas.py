@@ -73,6 +73,7 @@ class MediaAnalysisResult(BaseModel):
     created_at: str
     selected_model: Optional[str] = Field(None, description="Gemini model selected for analysis")
     model_selection_mode: Optional[str] = Field("automatic", description="Model selection mode (automatic or preferred_override)")
+    fallback_history: List[Dict[str, Any]] = Field(default_factory=list, description="Audit trail of model failovers during analysis")
     source_url: Optional[str] = Field(None, description="Optional remote stream/YouTube URL")
 
 class MediaOverviewExtraction(BaseModel):

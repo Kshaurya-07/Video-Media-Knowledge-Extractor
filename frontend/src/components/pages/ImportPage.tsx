@@ -336,7 +336,7 @@ export const ImportPage: React.FC<ImportPageProps> = ({
             {/* Action Bar */}
             <div className="flex items-center justify-between pt-2">
               <span className="text-xs font-mono text-[#71717A]">
-                AI Model Engine: <span className="text-violet-400">Gemini Auto · {systemConfig?.display_model || 'Gemini 3.8 Flash'}</span>
+                AI Model Engine: <span className="text-violet-400">Gemini Auto · {systemConfig?.display_model || 'Gemini 2.0 Flash'}</span>
               </span>
 
               <button
@@ -376,7 +376,7 @@ export const ImportPage: React.FC<ImportPageProps> = ({
                 {statusMessage || 'Synthesizing knowledge layers...'}
               </p>
               <p className="text-[11px] text-[#71717A]">
-                Gemini Auto ({systemConfig?.display_model || 'Gemini 3.8 Flash'}) is interleaving visual frames, waveforms, and OCR layers.
+                Gemini Auto ({systemConfig?.display_model || 'Gemini 2.0 Flash'}) is interleaving visual frames, waveforms, and OCR layers.
               </p>
             </div>
           </div>
