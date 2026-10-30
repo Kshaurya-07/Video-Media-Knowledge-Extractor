@@ -1,6 +1,7 @@
 import json
 import re
 import time
+import asyncio
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -141,11 +142,24 @@ def sanitize_error_message(err: Exception) -> str:
     msg = re.sub(r'AIzaSy[0-9A-Za-z_-]{33}', '[REDACTED_API_KEY]', msg)
     return msg
 
-def map_gemini_error(e: Exception, action: str = "Extraction", model_name: Optional[str] = None) -> HTTPException:
+def map_gemini_error(e: Exception, action: str = "Extraction", model_name: Optional[str] = None, is_youtube: bool = False) -> HTTPException:
     """Map Google Gemini API exceptions into clear, structured HTTPExceptions with safe messages."""
     clean_err = sanitize_error_message(e)
     err_lower = clean_err.lower()
     target_model = model_name or DEFAULT_MODEL
+
+    if is_youtube and (
+        "invalid_argument" in err_lower
+        or "400" in clean_err
+        or "cannot retrieve" in err_lower
+        or "unsupported uri" in err_lower
+        or "unable to retrieve" in err_lower
+        or "resource has been exhausted" not in err_lower and "uri" in err_lower
+    ):
+        return HTTPException(
+            status_code=400,
+            detail="The YouTube video is restricted or inaccessible to the AI model. Please verify the video is Public (not Private or Unlisted with restriction) and does not require age-verification sign-in."
+        )
 
     if "404" in clean_err or "not_found" in err_lower or "no longer available" in err_lower or "not found" in err_lower:
         return HTTPException(
@@ -351,22 +365,28 @@ async def extract_media_knowledge(
 
     if is_youtube:
         if on_stage:
-            on_stage("UPLOADING", 30.0, f"Connecting Gemini multimodal engine to YouTube stream ({source_url})...")
+            on_stage("EXTRACTING_MEDIA", 35.0, f"Connecting Gemini multimodal engine to YouTube stream ({source_url})...")
         uploaded_content = types.Part.from_uri(
             file_uri=source_url,
             mime_type="video/mp4"
         )
+        if on_stage:
+            on_stage("SENDING_TO_AI", 50.0, "Synchronizing video stream tokens with Gemini multimodal engine...")
     else:
         # Note: google-genai SDK requires passing mime_type via types.UploadFileConfig
         if on_stage:
-            on_stage("UPLOADING", 25.0, f"Uploading {media_path.name} to Gemini Files API...")
+            on_stage("EXTRACTING_MEDIA", 35.0, f"Validating media streams and preparing {media_path.name}...")
 
         try:
+            if on_stage:
+                on_stage("SENDING_TO_AI", 45.0, f"Uploading {media_path.name} to Gemini Files API...")
+
             upload_config = types.UploadFileConfig(
                 mime_type=mime_type,
                 display_name=media_path.name[:100]
             )
-            uploaded_file = client.files.upload(
+            uploaded_file = await asyncio.to_thread(
+                client.files.upload,
                 file=str(media_path),
                 config=upload_config
             )
@@ -377,12 +397,12 @@ async def extract_media_knowledge(
             file_name = uploaded_file.name
             FILE_REF_REGISTRY[file_id] = file_name
 
-            # For video/large files, poll file state until ACTIVE
+            # For video/large files, poll file state until ACTIVE asynchronously
             if is_video or (hasattr(uploaded_file, "state") and uploaded_file.state):
                 max_wait = 360  # up to 6 minutes
                 start_wait = time.time()
                 if on_stage:
-                    on_stage("EXTRACTING_AUDIO", 40.0, "Gemini processing video frames & audio tracks...")
+                    on_stage("SENDING_TO_AI", 50.0, "Gemini processing video frames & audio tracks...")
 
                 while uploaded_file and uploaded_file.state and (
                     uploaded_file.state == types.FileState.PROCESSING or
@@ -390,14 +410,14 @@ async def extract_media_knowledge(
                 ):
                     if time.time() - start_wait > max_wait:
                         raise HTTPException(status_code=504, detail="Video processing timed out on Gemini Files API")
-                    time.sleep(3)
-                    refreshed = client.files.get(name=file_name)
+                    await asyncio.sleep(3)
+                    refreshed = await asyncio.to_thread(client.files.get, name=file_name)
                     if refreshed:
                         uploaded_file = refreshed
                     if on_stage:
                         elapsed = int(time.time() - start_wait)
-                        pct = min(40.0 + (elapsed / max_wait) * 25.0, 65.0)
-                        on_stage("TRANSCRIBING", pct, f"Ingesting multimodal temporal features ({elapsed}s)...")
+                        pct = min(50.0 + (elapsed / max_wait) * 15.0, 65.0)
+                        on_stage("SENDING_TO_AI", pct, f"Ingesting multimodal temporal features ({elapsed}s)...")
 
                 if uploaded_file and uploaded_file.state and (
                     uploaded_file.state == types.FileState.FAILED or
@@ -409,7 +429,7 @@ async def extract_media_knowledge(
         except HTTPException:
             raise
         except Exception as e:
-            raise map_gemini_error(e, action="Media upload")
+            raise map_gemini_error(e, action="Media upload", is_youtube=is_youtube)
 
     # 6. Resolve Model (Automatic Discovery or Configured)
     active_model = selected_model_override
@@ -432,19 +452,21 @@ async def extract_media_knowledge(
         logger.info(f"[VYORA AI] Running multimodal extraction inference with model='{active_model}' for media={media_name_display} (file_id={file_id})")
         if on_stage:
             disp_name = format_model_display_name(active_model)
-            on_stage("IDENTIFYING_CHAPTERS", 70.0, f"Synthesizing chapters & knowledge using {disp_name}...")
+            on_stage("ANALYZING_VIDEO", 70.0, f"Analyzing video content with {disp_name}...")
 
         try:
-            response = client.models.generate_content(
+            gen_config = types.GenerateContentConfig(
+                system_instruction=EXTRACTION_SYSTEM_PROMPT,
+                response_mime_type="application/json",
+                temperature=0.2,
+                max_output_tokens=8192,
+                safety_settings=STANDARD_SAFETY_SETTINGS,
+            )
+            response = await asyncio.to_thread(
+                client.models.generate_content,
                 model=active_model,
                 contents=[uploaded_content, prompt],
-                config=types.GenerateContentConfig(
-                    system_instruction=EXTRACTION_SYSTEM_PROMPT,
-                    response_mime_type="application/json",
-                    temperature=0.2,
-                    max_output_tokens=8192,
-                    safety_settings=STANDARD_SAFETY_SETTINGS,
-                )
+                config=gen_config,
             )
 
             # Extract generated response text
@@ -459,7 +481,7 @@ async def extract_media_knowledge(
                         fallback_history.append({"from": active_model, "to": next_model, "reason": diag})
                         logger.warning(f"[VYORA AI] Falling back from '{active_model}' to '{next_model}' (fallback {fallback_attempts}/{max_fallbacks})")
                         if on_stage:
-                            on_stage("IDENTIFYING_CHAPTERS", 72.0, f"Recovering with fallback model '{format_model_display_name(next_model)}'...")
+                            on_stage("ANALYZING_VIDEO", 72.0, f"Recovering with fallback model '{format_model_display_name(next_model)}'...")
                         active_model = next_model
                         selection_mode = "fallback"
                         continue
@@ -477,9 +499,9 @@ async def extract_media_knowledge(
 
             # 401 unauthenticated or 403 permission denied across project - do not swap models
             if "401" in clean_err or "api_key_invalid" in err_lower or "unauthenticated" in err_lower:
-                raise map_gemini_error(e, action="Extraction", model_name=active_model)
+                raise map_gemini_error(e, action="Extraction", model_name=active_model, is_youtube=is_youtube)
             if "403" in clean_err or "permission_denied" in err_lower:
-                raise map_gemini_error(e, action="Extraction", model_name=active_model)
+                raise map_gemini_error(e, action="Extraction", model_name=active_model, is_youtube=is_youtube)
 
             # Model unavailable/deprecated/not found -> Fallback
             is_model_unavailable = (
@@ -497,7 +519,7 @@ async def extract_media_knowledge(
                     fallback_history.append({"from": active_model, "to": next_model, "reason": clean_err})
                     logger.warning(f"[VYORA AI] Model '{active_model}' unavailable ({clean_err}). Falling back to '{next_model}' (fallback {fallback_attempts}/{max_fallbacks})")
                     if on_stage:
-                        on_stage("IDENTIFYING_CHAPTERS", 72.0, f"Recovering with fallback model '{format_model_display_name(next_model)}'...")
+                        on_stage("ANALYZING_VIDEO", 72.0, f"Recovering with fallback model '{format_model_display_name(next_model)}'...")
                     active_model = next_model
                     selection_mode = "fallback"
                     continue
@@ -507,10 +529,13 @@ async def extract_media_knowledge(
                 fallback_attempts += 1
                 backoff = 2.0 * fallback_attempts
                 logger.warning(f"[VYORA AI] Transient error from Gemini ({clean_err}). Retrying in {backoff}s...")
-                time.sleep(backoff)
+                await asyncio.sleep(backoff)
                 continue
 
-            raise map_gemini_error(e, action="Extraction", model_name=active_model)
+            raise map_gemini_error(e, action="Extraction", model_name=active_model, is_youtube=is_youtube)
+
+    if on_stage:
+        on_stage("GENERATING_CHAPTERS", 85.0, "Synthesizing timestamped chapters and knowledge graph...")
 
     try:
         raw_text = clean_json_text(resp_text)

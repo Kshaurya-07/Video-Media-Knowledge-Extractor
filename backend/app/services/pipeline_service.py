@@ -175,8 +175,9 @@ async def process_media_background_job(job_id: str, project_id: str, file_path: 
                 model_selection_mode=selection_mode,
             )
 
-        # Initial validation stage
+        # Initial stages
         on_stage("UPLOADING", 10.0, f"Initializing pipeline with {disp_name} ({selection_mode})...")
+        on_stage("VALIDATING", 20.0, "Verifying media container integrity and decoding temporal streams...")
 
         # Run multimodal extraction with Gemini (or cached/demo data)
         try:
@@ -201,8 +202,8 @@ async def process_media_background_job(job_id: str, project_id: str, file_path: 
         final_model = getattr(analysis, "selected_model", None) or resolved_model
         final_mode = getattr(analysis, "model_selection_mode", None) or selection_mode
 
-        # Finalizing & Saving structured intelligence
-        on_stage("FINALIZING", 95.0, f"Persisting structured knowledge (analyzed with {format_model_display_name(final_model)})...")
+        # Saving structured intelligence
+        on_stage("SAVING_RESULTS", 95.0, f"Persisting structured knowledge (analyzed with {format_model_display_name(final_model)})...")
         
         with get_db() as conn:
             cursor = conn.cursor()

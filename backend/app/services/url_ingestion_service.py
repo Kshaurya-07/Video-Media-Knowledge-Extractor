@@ -12,6 +12,11 @@ from fastapi import HTTPException
 
 from app.config import UPLOAD_DIR
 from app.database import get_db
+from app.services.media_service import (
+    validate_media_file_content,
+    inspect_media_file,
+    ALL_SUPPORTED_EXTENSIONS,
+)
 
 logger = logging.getLogger("vyora.url_ingestion")
 
@@ -187,7 +192,7 @@ async def ingest_remote_media_url(
     parsed = urlsplit(validated_url)
     orig_filename = Path(parsed.path).name or "stream_video.mp4"
     suffix = Path(orig_filename).suffix.lower()
-    if suffix not in ('.mp4', '.webm', '.mov', '.mkv', '.mp3', '.wav', '.m4a', '.ogg'):
+    if suffix not in ALL_SUPPORTED_EXTENSIONS:
         suffix = ".mp4"
 
     save_path = UPLOAD_DIR / f"{file_id}{suffix}"
@@ -250,7 +255,18 @@ async def ingest_remote_media_url(
                 detail=f"Failed to download remote media from URL: {str(e)}"
             )
 
-    is_video = suffix in ('.mp4', '.webm', '.mov', '.mkv')
+    # Validate container format & magic bytes
+    is_valid, validation_msg = validate_media_file_content(save_path)
+    if not is_valid:
+        if save_path.exists():
+            save_path.unlink()
+        raise HTTPException(status_code=400, detail=f"Downloaded media stream is invalid: {validation_msg}")
+
+    # Inspect media properties
+    info = inspect_media_file(save_path)
+    duration_secs = info.get("duration_seconds", 120.0)
+    duration_fmt = info.get("duration_formatted", "02:00")
+    media_type = info.get("media_type", "video")
     title = title_hint.strip() if title_hint and title_hint.strip() else orig_filename
 
     with get_db() as conn:
@@ -265,18 +281,20 @@ async def ingest_remote_media_url(
             title = excluded.title,
             source_url = excluded.source_url,
             file_path = excluded.file_path,
+            duration_seconds = excluded.duration_seconds,
+            duration_formatted = excluded.duration_formatted,
             status = 'QUEUED'
         """, (
             file_id,
             "default_user",
             title,
             f"Ingested from direct URL: {validated_url}",
-            "video" if is_video else "audio",
+            media_type,
             orig_filename,
             str(save_path),
             validated_url,
-            120.0,
-            "02:00",
+            duration_secs,
+            duration_fmt,
             "QUEUED"
         ))
         conn.commit()

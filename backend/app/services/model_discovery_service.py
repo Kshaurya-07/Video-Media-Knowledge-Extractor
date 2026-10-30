@@ -214,12 +214,17 @@ def discover_available_models(
                 items.append(m)
             return items
 
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         try:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(_fetch_all_models)
-                raw_models = future.result(timeout=4.0)
+            future = executor.submit(_fetch_all_models)
+            raw_models = future.result(timeout=4.0)
+            executor.shutdown(wait=False)
         except concurrent.futures.TimeoutError:
+            executor.shutdown(wait=False, cancel_futures=True)
             raise TimeoutError("models.list API call timed out after 4.0 seconds")
+        except Exception:
+            executor.shutdown(wait=False, cancel_futures=True)
+            raise
         
         # Process discovered models
         for m in raw_models:
@@ -439,7 +444,7 @@ def invalidate_model_cache(api_key: Optional[str] = None):
         del _MODEL_CACHE[key_hash]
         logger.info(f"[VYORA AI] Invalidated model discovery cache for key_hash={key_hash}.")
 
-def get_model_status_payload(api_key: Optional[str] = None) -> Dict[str, Any]:
+def get_model_status_payload(api_key: Optional[str] = None, allow_network: bool = False) -> Dict[str, Any]:
     """
     Generate public-safe model status JSON payload for the GET /api/system/model-status endpoint.
     Guarantees no API secrets, credentials, or private keys are exposed.
@@ -449,7 +454,10 @@ def get_model_status_payload(api_key: Optional[str] = None) -> Dict[str, Any]:
     has_server_key = bool(server_key and server_key.strip())
     has_user_key = bool(api_key and api_key.strip())
     has_key = bool(resolved_key and resolved_key.strip())
-    selected_model, selection_mode, cache_entry = get_active_model_selection(resolved_key)
+    selected_model, selection_mode, cache_entry = get_active_model_selection(
+        resolved_key,
+        allow_network=allow_network
+    )
 
     candidates = [
         {

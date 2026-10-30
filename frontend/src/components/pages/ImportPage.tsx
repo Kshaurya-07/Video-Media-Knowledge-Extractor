@@ -203,7 +203,7 @@ export const ImportPage: React.FC<ImportPageProps> = ({
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="video/*,audio/*"
+                  accept="video/*,audio/*,.mp4,.mov,.avi,.mkv,.webm,.mpeg,.mpg,.wmv,.3gp,.mp3,.wav,.m4a,.ogg"
                   className="hidden"
                   onChange={(e) => {
                     if (e.target.files && e.target.files[0]) {
@@ -235,7 +235,7 @@ export const ImportPage: React.FC<ImportPageProps> = ({
                           Drag and drop your media file, or <span className="text-violet-400 underline underline-offset-4">browse</span>
                         </p>
                         <p className="text-xs text-[#71717A]">
-                          MP4, WebM, MOV, MP3, WAV, M4A up to 500MB
+                          MP4, MOV, AVI, MKV, WebM, MPEG, WMV, 3GP, MP3, WAV up to 500MB
                         </p>
                       </div>
                     )}

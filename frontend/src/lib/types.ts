@@ -129,6 +129,12 @@ export interface UserProfile {
 export type ProcessingStage =
   | 'QUEUED'
   | 'UPLOADING'
+  | 'VALIDATING'
+  | 'EXTRACTING_MEDIA'
+  | 'SENDING_TO_AI'
+  | 'ANALYZING_VIDEO'
+  | 'GENERATING_CHAPTERS'
+  | 'SAVING_RESULTS'
   | 'EXTRACTING_AUDIO'
   | 'TRANSCRIBING'
   | 'IDENTIFYING_CHAPTERS'

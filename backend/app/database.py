@@ -2,18 +2,28 @@ import sqlite3
 import json
 from pathlib import Path
 from typing import Optional, List, Dict, Any
+from contextlib import contextmanager
 from app.config import BASE_DIR
 
 DB_PATH = BASE_DIR / "vyora.db"
 
+@contextmanager
 def get_db():
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = sqlite3.connect(str(DB_PATH), timeout=30.0, check_same_thread=False)
     conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        yield conn
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 def init_db():
     with get_db() as conn:
         cursor = conn.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL;")
+        cursor.execute("PRAGMA busy_timeout=30000;")
         
         # 1. Projects Table
         cursor.execute("""

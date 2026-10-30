@@ -1,4 +1,5 @@
 import json
+import asyncio
 import logging
 from typing import List, Optional
 from google import genai
@@ -97,7 +98,7 @@ Chapters:
     file_ref_name = FILE_REF_REGISTRY.get(file_id)
     if file_ref_name:
         try:
-            file_ref = client.files.get(name=file_ref_name)
+            file_ref = await asyncio.to_thread(client.files.get, name=file_ref_name)
             contents.append(file_ref)
         except Exception:
             pass  # Fallback to context string
@@ -126,16 +127,18 @@ Conversation History:
     while True:
         logger.info(f"[VYORA AI] Running grounded Q&A inference with model='{active_model}' for file_id={file_id}")
         try:
-            response = client.models.generate_content(
+            gen_config = types.GenerateContentConfig(
+                system_instruction=QA_SYSTEM_PROMPT,
+                response_mime_type="application/json",
+                temperature=0.2,
+                max_output_tokens=4096,
+                safety_settings=STANDARD_SAFETY_SETTINGS,
+            )
+            response = await asyncio.to_thread(
+                client.models.generate_content,
                 model=active_model,
                 contents=contents,
-                config=types.GenerateContentConfig(
-                    system_instruction=QA_SYSTEM_PROMPT,
-                    response_mime_type="application/json",
-                    temperature=0.2,
-                    max_output_tokens=4096,
-                    safety_settings=STANDARD_SAFETY_SETTINGS,
-                )
+                config=gen_config,
             )
 
             resp_text = get_response_text(response)
@@ -181,7 +184,7 @@ Conversation History:
                 fallback_attempts += 1
                 backoff = 2.0 * fallback_attempts
                 logger.warning(f"[VYORA AI] Q&A transient error ({clean_err}). Retrying in {backoff}s...")
-                time.sleep(backoff)
+                await asyncio.sleep(backoff)
                 continue
 
             raise map_gemini_error(e, action="Q&A generation", model_name=active_model)

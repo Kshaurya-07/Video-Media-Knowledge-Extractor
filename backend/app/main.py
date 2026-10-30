@@ -45,6 +45,9 @@ from app.services.media_service import (
     get_media_mime_type,
     range_stream,
     format_seconds,
+    validate_media_file_content,
+    inspect_media_file,
+    MAX_MEDIA_FILE_SIZE_BYTES,
 )
 from app.services.gemini_extractor import (
     extract_media_knowledge,
@@ -126,12 +129,12 @@ class IngestUrlRequest(BaseModel):
 # ----------------- Health & Configuration -----------------
 @app.get("/api/system/model-status")
 async def get_system_model_status(x_gemini_api_key: Optional[str] = Header(None)):
-    return get_model_status_payload(api_key=x_gemini_api_key)
+    return get_model_status_payload(api_key=x_gemini_api_key, allow_network=True)
 
 @app.post("/api/system/model-cache/refresh")
 async def refresh_model_cache(x_gemini_api_key: Optional[str] = Header(None)):
     invalidate_model_cache(api_key=x_gemini_api_key)
-    return get_model_status_payload(api_key=x_gemini_api_key)
+    return get_model_status_payload(api_key=x_gemini_api_key, allow_network=True)
 
 @app.get("/api/config")
 async def get_system_config(x_gemini_api_key: Optional[str] = Header(None)):
@@ -480,13 +483,38 @@ async def upload_media(file: UploadFile = File(...)):
     save_path = UPLOAD_DIR / f"{file_id}{suffix}"
 
     file_size = 0
-    with open(save_path, "wb") as buffer:
-        while chunk := await file.read(1024 * 1024):
-            file_size += len(chunk)
-            buffer.write(chunk)
+    try:
+        with open(save_path, "wb") as buffer:
+            while chunk := await file.read(1024 * 1024):
+                file_size += len(chunk)
+                if file_size > MAX_MEDIA_FILE_SIZE_BYTES:
+                    buffer.close()
+                    if save_path.exists():
+                        save_path.unlink()
+                    raise HTTPException(
+                        status_code=413,
+                        detail="File exceeds the maximum allowed size limit of 500MB."
+                    )
+                buffer.write(chunk)
+    except HTTPException:
+        raise
+    except Exception as e:
+        if save_path.exists():
+            save_path.unlink()
+        raise HTTPException(status_code=500, detail=f"Failed to save uploaded file: {str(e)}")
 
-    mime_type = get_media_mime_type(save_path)
-    is_video = mime_type.startswith("video/")
+    # Validate file integrity and container format signatures
+    is_valid, validation_msg = validate_media_file_content(save_path)
+    if not is_valid:
+        if save_path.exists():
+            save_path.unlink()
+        raise HTTPException(status_code=400, detail=validation_msg)
+
+    # Inspect media properties (duration, resolution, audio streams)
+    info = inspect_media_file(save_path)
+    duration_secs = info.get("duration_seconds", 120.0)
+    duration_fmt = info.get("duration_formatted", format_seconds(duration_secs))
+    media_type = info.get("media_type", "video")
 
     # Create unanalyzed project record
     with get_db() as conn:
@@ -499,11 +527,11 @@ async def upload_media(file: UploadFile = File(...)):
             "default_user",
             orig_name,
             "Uploaded media awaiting AI knowledge extraction",
-            "video" if is_video else "audio",
+            media_type,
             orig_name,
             str(save_path),
-            120.0,
-            "02:00",
+            duration_secs,
+            duration_fmt,
             "QUEUED"
         ))
         conn.commit()
@@ -511,9 +539,9 @@ async def upload_media(file: UploadFile = File(...)):
     return MediaMetadata(
         file_id=file_id,
         filename=orig_name,
-        media_type="video" if is_video else "audio",
-        duration_seconds=120.0,
-        duration_formatted="02:00",
+        media_type=media_type,
+        duration_seconds=duration_secs,
+        duration_formatted=duration_fmt,
         file_size_bytes=file_size,
     )
 

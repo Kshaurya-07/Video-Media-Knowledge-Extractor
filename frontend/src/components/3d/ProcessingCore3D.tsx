@@ -4,6 +4,12 @@ import * as THREE from 'three';
 export type ProcessingStage =
   | 'QUEUED'
   | 'UPLOADING'
+  | 'VALIDATING'
+  | 'EXTRACTING_MEDIA'
+  | 'SENDING_TO_AI'
+  | 'ANALYZING_VIDEO'
+  | 'GENERATING_CHAPTERS'
+  | 'SAVING_RESULTS'
   | 'EXTRACTING_AUDIO'
   | 'TRANSCRIBING'
   | 'IDENTIFYING_CHAPTERS'
@@ -21,6 +27,12 @@ interface ProcessingCore3DProps {
 const STAGE_CONFIG: Record<ProcessingStage, { color: number; speed: number; particleDensity: number }> = {
   QUEUED: { color: 0x71717a, speed: 0.005, particleDensity: 100 },
   UPLOADING: { color: 0x60a5fa, speed: 0.015, particleDensity: 250 },
+  VALIDATING: { color: 0x38bdf8, speed: 0.018, particleDensity: 280 },
+  EXTRACTING_MEDIA: { color: 0xa855f7, speed: 0.02, particleDensity: 320 },
+  SENDING_TO_AI: { color: 0x818cf8, speed: 0.022, particleDensity: 360 },
+  ANALYZING_VIDEO: { color: 0x8b5cf6, speed: 0.028, particleDensity: 420 },
+  GENERATING_CHAPTERS: { color: 0xc084fc, speed: 0.024, particleDensity: 380 },
+  SAVING_RESULTS: { color: 0x10b981, speed: 0.018, particleDensity: 300 },
   EXTRACTING_AUDIO: { color: 0xa855f7, speed: 0.02, particleDensity: 300 },
   TRANSCRIBING: { color: 0x8b5cf6, speed: 0.025, particleDensity: 400 },
   IDENTIFYING_CHAPTERS: { color: 0xc084fc, speed: 0.02, particleDensity: 350 },
