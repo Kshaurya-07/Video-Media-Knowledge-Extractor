@@ -19,6 +19,8 @@ from app.services.gemini_extractor import (
     get_cached_result,
     FILE_REF_REGISTRY,
     clean_json_text,
+    repair_truncated_json,
+    sanitize_schema_for_gemini_api,
     sanitize_error_message,
     map_gemini_error,
     get_response_text,
@@ -127,9 +129,11 @@ Conversation History:
     while True:
         logger.info(f"[VYORA AI] Running grounded Q&A inference with model='{active_model}' for file_id={file_id}")
         try:
+            safe_schema = sanitize_schema_for_gemini_api(ChatResponse)
             gen_config = types.GenerateContentConfig(
                 system_instruction=QA_SYSTEM_PROMPT,
                 response_mime_type="application/json",
+                response_schema=safe_schema,
                 temperature=0.2,
                 max_output_tokens=4096,
                 safety_settings=STANDARD_SAFETY_SETTINGS,
@@ -192,7 +196,11 @@ Conversation History:
     try:
         resp_text = get_response_text(response)
         clean_text = clean_json_text(resp_text)
-        data = json.loads(clean_text)
+        try:
+            data = json.loads(clean_text)
+        except json.JSONDecodeError:
+            repaired = repair_truncated_json(clean_text)
+            data = json.loads(repaired)
         return ChatResponse(**data)
 
     except json.JSONDecodeError:

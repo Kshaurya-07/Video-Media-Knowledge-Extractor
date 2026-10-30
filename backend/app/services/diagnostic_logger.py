@@ -7,10 +7,10 @@ logger = logging.getLogger("vyora.diagnostic")
 
 def log_diagnostic(
     event: str,
-    job_id: str,
-    correlation_id: str,
-    stage: str,
-    elapsed_seconds: float,
+    job_id: str = "no-job-id",
+    correlation_id: str = "no-cid",
+    stage: str = "UNKNOWN",
+    elapsed_seconds: float = 0.0,
     status: str = "INFO",
     error_class: Optional[str] = None,
     error_message: Optional[str] = None,

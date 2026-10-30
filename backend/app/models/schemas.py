@@ -49,6 +49,11 @@ class MediaMetadata(BaseModel):
     file_size_bytes: int
     source_url: Optional[str] = None
 
+class SentimentAndTone(BaseModel):
+    overall: str = Field(default="Informative", description="Overall sentiment: Positive, Analytical, Instructional, Serious, etc.")
+    energy_level: str = Field(default="Moderate", description="Energy level: High, Moderate, Calm")
+    communication_style: str = Field(default="Conversational", description="Brief description of communication style")
+
 class MediaAnalysisResult(BaseModel):
     file_id: str
     filename: str
@@ -64,7 +69,7 @@ class MediaAnalysisResult(BaseModel):
     visual_scenes: List[VisualScene]
     entities: List[EntityItem]
     action_items: List[ActionItem]
-    sentiment_and_tone: Dict[str, Any] = Field(default_factory=dict)
+    sentiment_and_tone: Any = Field(default_factory=dict)
     created_at: str
     selected_model: Optional[str] = Field(None, description="Gemini model selected for analysis")
     model_selection_mode: Optional[str] = Field("automatic", description="Model selection mode (automatic or preferred_override)")
@@ -78,7 +83,7 @@ class MediaOverviewExtraction(BaseModel):
     executive_summary: str = Field(..., description="Rich, detailed executive summary covering major themes, arguments, and conclusions")
     key_takeaways: List[str] = Field(default_factory=list, description="4-8 bullet points highlighting key insights")
     action_items: List[ActionItem] = Field(default_factory=list, description="Actionable next steps or takeaways")
-    sentiment_and_tone: Dict[str, Any] = Field(default_factory=dict, description="Overall tone, energy level, and communication style")
+    sentiment_and_tone: SentimentAndTone = Field(default_factory=SentimentAndTone, description="Overall tone, energy level, and communication style")
 
 class MediaChaptersExtraction(BaseModel):
     chapters: List[Chapter] = Field(default_factory=list, description="Chronological chapters covering the entire duration with key moments")

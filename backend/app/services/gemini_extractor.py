@@ -32,6 +32,7 @@ from app.models.schemas import (
     MediaChaptersExtraction,
     MediaTranscriptAndScenesExtraction,
     ExtractionErrorDetail,
+    SentimentAndTone,
 )
 from app.services.media_service import get_media_path, get_media_mime_type, format_seconds
 
@@ -195,6 +196,48 @@ def repair_truncated_json(raw: str) -> str:
         elif opener == '[':
             repaired += ']'
     return repaired
+
+def sanitize_schema_for_gemini_api(schema_input: Any) -> Any:
+    """
+    Validates and sanitizes a schema for Gemini Developer API mode.
+    Converts Pydantic models or dicts to types.Schema and recursively strips
+    unsupported keywords like 'additional_properties' / 'additionalProperties'
+    which cause 400 'additionalProperties is only supported in Gemini Enterprise Agent Platform mode'.
+    """
+    from google.genai._transformers import t_schema
+    
+    try:
+        schema_obj = t_schema(None, schema_input)
+    except Exception as e:
+        logger.warning(f"[VYORA AI] Schema transformation via t_schema failed: {e}. Passing raw schema.")
+        return schema_input
+
+    def _strip_recursively(node: Any):
+        if node is None:
+            return
+        if hasattr(node, "additional_properties"):
+            node.additional_properties = None
+        if hasattr(node, "properties") and node.properties:
+            for child in node.properties.values():
+                _strip_recursively(child)
+        if hasattr(node, "items") and node.items:
+            _strip_recursively(node.items)
+        if hasattr(node, "any_of") and node.any_of:
+            for child in node.any_of:
+                _strip_recursively(child)
+
+    _strip_recursively(schema_obj)
+    return schema_obj
+
+def validate_schema_compatibility(schema_obj: Any) -> tuple[bool, str]:
+    """
+    Inspects a transformed schema to ensure zero occurrences of 'additional_properties=True'
+    or 'additionalProperties' before transmitting to Google Gemini Developer API.
+    """
+    schema_str = str(schema_obj)
+    if "additional_properties=True" in schema_str or "additionalProperties" in schema_str:
+        return False, "Detected unsupported 'additionalProperties' in schema for Gemini Developer API mode."
+    return True, "Schema is 100% compatible with Gemini Developer API mode."
 
 def sanitize_error_message(err: Exception) -> str:
     """Strip any API keys or sensitive auth tokens from error message."""
@@ -725,11 +768,41 @@ async def extract_media_knowledge(
 
         heartbeat_task = asyncio.create_task(_heartbeat_worker())
 
+        # Pre-validate and sanitize schema for Gemini Developer API mode
+        safe_schema = sanitize_schema_for_gemini_api(schema_model)
+        is_compat, compat_msg = validate_schema_compatibility(safe_schema)
+        if not is_compat:
+            log_diagnostic(
+                event="SCHEMA_VALIDATION_FAILED",
+                job_id=jid,
+                correlation_id=cid,
+                stage=stage_name,
+                elapsed_seconds=time.time() - ext_start_time,
+                status="ERROR",
+                model_id=active_model,
+                details={"reason": compat_msg},
+            )
+            raise HTTPException(
+                status_code=500,
+                detail=f"Schema validation error for stage '{stage_name}': {compat_msg}"
+            )
+
+        log_diagnostic(
+            event="SCHEMA_VALIDATED",
+            job_id=jid,
+            correlation_id=cid,
+            stage=stage_name,
+            elapsed_seconds=time.time() - ext_start_time,
+            status="SUCCESS",
+            model_id=active_model,
+            details={"schema": schema_model.__name__ if hasattr(schema_model, "__name__") else str(schema_model)},
+        )
+
         try:
             gen_config = types.GenerateContentConfig(
                 system_instruction=system_instruction,
                 response_mime_type="application/json",
-                response_schema=schema_model,
+                response_schema=safe_schema,
                 temperature=0.2,
                 max_output_tokens=max_tokens,
                 safety_settings=STANDARD_SAFETY_SETTINGS,
@@ -978,7 +1051,7 @@ async def extract_media_knowledge(
         "visual_scenes": [v.model_dump() for v in visual_scenes],
         "entities": [e.model_dump() for e in entities],
         "action_items": [a.model_dump() for a in action_items],
-        "sentiment_and_tone": sentiment_and_tone,
+        "sentiment_and_tone": sentiment_and_tone.model_dump() if hasattr(sentiment_and_tone, "model_dump") else (sentiment_and_tone or {}),
         "created_at": datetime.now().isoformat(),
         "selected_model": active_model,
         "model_selection_mode": selection_mode,
