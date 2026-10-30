@@ -28,6 +28,10 @@ from app.models.schemas import (
     VisualScene,
     EntityItem,
     ActionItem,
+    MediaOverviewExtraction,
+    MediaChaptersExtraction,
+    MediaTranscriptAndScenesExtraction,
+    ExtractionErrorDetail,
 )
 from app.services.media_service import get_media_path, get_media_mime_type, format_seconds
 
@@ -133,7 +137,64 @@ def clean_json_text(text: str) -> str:
     if match:
         return match.group(1).strip()
 
+    # If starts with opening brace but was cut off mid-stream, strip leading non-JSON text
+    first_brace = clean.find("{")
+    if first_brace != -1:
+        return clean[first_brace:]
+
     return clean
+
+def repair_truncated_json(raw: str) -> str:
+    """
+    Attempts to repair a truncated JSON string caused by output token limits
+    by closing unclosed strings, removing dangling commas/colons, and closing
+    open brackets and braces in proper reverse-stack order.
+    """
+    if not raw or not raw.strip():
+        return "{}"
+    text = clean_json_text(raw)
+    try:
+        json.loads(text)
+        return text
+    except json.JSONDecodeError:
+        pass
+
+    in_string = False
+    escape = False
+    stack = []
+    for ch in text:
+        if escape:
+            escape = False
+            continue
+        if ch == '\\' and in_string:
+            escape = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if not in_string:
+            if ch in ('{', '['):
+                stack.append(ch)
+            elif ch == '}':
+                if stack and stack[-1] == '{':
+                    stack.pop()
+            elif ch == ']':
+                if stack and stack[-1] == '[':
+                    stack.pop()
+
+    repaired = text
+    if in_string:
+        repaired += '"'
+    repaired = repaired.rstrip()
+    while repaired and repaired[-1] in (',', ':', ' '):
+        repaired = repaired[:-1].rstrip()
+    while stack:
+        opener = stack.pop()
+        if opener == '{':
+            repaired += '}'
+        elif opener == '[':
+            repaired += ']'
+    return repaired
 
 def sanitize_error_message(err: Exception) -> str:
     """Strip any API keys or sensitive auth tokens from error message."""
@@ -285,6 +346,107 @@ def get_response_text(response: Any) -> str:
                 return "".join(all_parts)
 
     return ""
+
+def parse_structured_gemini_response(
+    response: Any,
+    schema_model: Any,
+    stage_name: str,
+    job_id: Optional[str] = None,
+    correlation_id: Optional[str] = None,
+    model_name: Optional[str] = None,
+) -> Any:
+    """
+    Parses and validates a structured Gemini response against a Pydantic schema model.
+    Checks candidate finish reasons (e.g. MAX_TOKENS), strips markdown fences,
+    detects truncation, attempts smart JSON repair if needed, and logs diagnostics.
+    """
+    candidates = getattr(response, "candidates", None) or []
+    finish_reason = None
+    if candidates and len(candidates) > 0:
+        finish_reason = getattr(candidates[0], "finish_reason", None)
+
+    is_truncated_by_tokens = False
+    if finish_reason:
+        fr_str = str(finish_reason).upper()
+        if "MAX_TOKENS" in fr_str or (hasattr(types, "FinishReason") and finish_reason == types.FinishReason.MAX_TOKENS):
+            is_truncated_by_tokens = True
+            logger.warning(f"[VYORA AI] Gemini generation for stage '{stage_name}' was truncated (finish_reason=MAX_TOKENS).")
+            log_diagnostic(
+                event="GEMINI_TOKEN_LIMIT",
+                job_id=job_id,
+                correlation_id=correlation_id,
+                stage=stage_name,
+                status="WARNING",
+                model_id=model_name,
+                details={"stage": stage_name, "finish_reason": str(finish_reason)},
+            )
+
+    resp_text = get_response_text(response)
+    if not resp_text or not resp_text.strip():
+        diag = diagnose_empty_response(response, model_name=model_name or "gemini")
+        log_diagnostic(
+            event="GEMINI_RESPONSE_EMPTY",
+            job_id=job_id,
+            correlation_id=correlation_id,
+            stage=stage_name,
+            status="ERROR",
+            model_id=model_name,
+            error_class="EmptyResponse",
+            error_message=diag,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=f"Gemini returned an empty response during {stage_name}: {diag}"
+        )
+
+    clean_text = clean_json_text(resp_text)
+
+    # 1. Try direct Pydantic JSON validation
+    try:
+        return schema_model.model_validate_json(clean_text)
+    except Exception as initial_err:
+        logger.warning(f"[VYORA AI] Direct schema validation failed for stage '{stage_name}' ({initial_err}). Attempting repair...")
+
+    # 2. Attempt smart JSON repair
+    try:
+        repaired_text = repair_truncated_json(clean_text)
+        parsed_dict = json.loads(repaired_text)
+        validated = schema_model.model_validate(parsed_dict)
+        logger.info(f"[VYORA AI] Successfully recovered and validated partial JSON for stage '{stage_name}'.")
+        log_diagnostic(
+            event="GEMINI_RESPONSE_REPAIRED",
+            job_id=job_id,
+            correlation_id=correlation_id,
+            stage=stage_name,
+            status="RECOVERED",
+            model_id=model_name,
+            details={"stage": stage_name, "is_truncated_by_tokens": is_truncated_by_tokens},
+        )
+        return validated
+    except Exception as repair_err:
+        err_msg = sanitize_error_message(repair_err)
+        logger.error(f"[VYORA AI] JSON parsing failed for stage '{stage_name}': {err_msg}")
+
+        err_code = "GEMINI_TOKEN_LIMIT" if is_truncated_by_tokens else "GEMINI_RESPONSE_INVALID"
+        if "delimiter" in err_msg.lower() or "unterminated" in err_msg.lower():
+            err_code = "GEMINI_RESPONSE_TRUNCATED"
+
+        log_diagnostic(
+            event=err_code,
+            job_id=job_id,
+            correlation_id=correlation_id,
+            stage=stage_name,
+            status="ERROR",
+            model_id=model_name,
+            error_class=type(repair_err).__name__,
+            error_message=err_msg,
+            details={"snippet": clean_text[:300] if clean_text else ""}
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to parse Gemini JSON response in stage '{stage_name}': {err_msg}. Code: {err_code}"
+        )
 
 def get_cached_result(file_id: str) -> Optional[MediaAnalysisResult]:
     cache_file = DATA_CACHE_DIR / f"{file_id}.json"
@@ -513,37 +675,42 @@ async def extract_media_knowledge(
     if not active_model:
         active_model, selection_mode, _ = get_active_model_selection(resolved_key)
 
-    prompt = (
-        f"Analyze this {'video' if is_video else 'audio'} content '{media_display_name}'. "
-        "Extract complete knowledge according to the system prompt instructions."
-    )
-
     max_fallbacks = 3
     fallback_attempts = 0
     fallback_history = []
-    response = None
     media_name_display = media_path.name if media_path else media_display_name
 
-    while True:
-        logger.info(f"[VYORA AI] Running multimodal extraction inference with model='{active_model}' for media={media_name_display} (file_id={file_id})")
+    async def _execute_gemini_stage(
+        stage_name: str,
+        system_instruction: str,
+        prompt_text: str,
+        schema_model: Any,
+        progress_start: float,
+        progress_end: float,
+        progress_label: str,
+        max_tokens: int = 4096,
+    ) -> Any:
+        nonlocal active_model, selection_mode, fallback_attempts
+        disp_name = format_model_display_name(active_model)
+
         if on_stage:
-            disp_name = format_model_display_name(active_model)
-            on_stage("ANALYZING_VIDEO", 70.0, f"Analyzing video content with {disp_name}...")
+            on_stage(stage_name, progress_start, f"{progress_label} with {disp_name}...")
 
         log_diagnostic(
-            event="INFERENCE_STARTED",
+            event="INFERENCE_STAGE_STARTED",
             job_id=jid,
             correlation_id=cid,
-            stage="ANALYZING_VIDEO",
+            stage=stage_name,
             elapsed_seconds=time.time() - ext_start_time,
             status="INFO",
             model_id=active_model,
             file_id=file_id,
+            details={"stage": stage_name},
         )
 
         heartbeat_cancelled = asyncio.Event()
 
-        async def _inference_heartbeat_worker():
+        async def _heartbeat_worker():
             h_start = time.time()
             while not heartbeat_cancelled.is_set():
                 try:
@@ -553,169 +720,292 @@ async def extract_media_knowledge(
                     pass
                 elapsed = int(time.time() - h_start)
                 if on_stage:
-                    disp_name = format_model_display_name(active_model)
-                    pct = min(70.0 + (elapsed / 300.0) * 14.0, 84.0)
-                    on_stage("ANALYZING_VIDEO", round(pct, 1), f"Analyzing video content with {disp_name} (elapsed: {elapsed}s)...")
+                    pct = min(progress_start + (elapsed / 180.0) * (progress_end - progress_start), progress_end - 1.0)
+                    on_stage(stage_name, round(pct, 1), f"{progress_label} with {disp_name} (elapsed: {elapsed}s)...")
 
-        heartbeat_task = asyncio.create_task(_inference_heartbeat_worker())
+        heartbeat_task = asyncio.create_task(_heartbeat_worker())
 
         try:
-            try:
-                gen_config = types.GenerateContentConfig(
-                    system_instruction=EXTRACTION_SYSTEM_PROMPT,
-                    response_mime_type="application/json",
-                    temperature=0.2,
-                    max_output_tokens=8192,
-                    safety_settings=STANDARD_SAFETY_SETTINGS,
-                )
-                response = await asyncio.to_thread(
-                    client.models.generate_content,
-                    model=active_model,
-                    contents=[uploaded_content, prompt],
-                    config=gen_config,
-                )
-            finally:
-                heartbeat_cancelled.set()
-                await heartbeat_task
-
-            log_diagnostic(
-                event="INFERENCE_COMPLETED",
-                job_id=jid,
-                correlation_id=cid,
-                stage="ANALYZING_VIDEO",
-                elapsed_seconds=time.time() - ext_start_time,
-                status="SUCCESS",
-                model_id=active_model,
-                file_id=file_id,
+            gen_config = types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                response_mime_type="application/json",
+                response_schema=schema_model,
+                temperature=0.2,
+                max_output_tokens=max_tokens,
+                safety_settings=STANDARD_SAFETY_SETTINGS,
             )
-
-            # Extract generated response text
-            resp_text = get_response_text(response)
-            if not resp_text:
-                diag = diagnose_empty_response(response, model_name=active_model)
-                logger.warning(f"[VYORA AI] Model '{active_model}' returned empty response text ({diag})")
-                if fallback_attempts < max_fallbacks:
-                    fallback_attempts += 1
-                    next_model = blacklist_failed_model(active_model, api_key=resolved_key, reason=diag)
-                    if next_model and next_model != active_model:
-                        fallback_history.append({"from": active_model, "to": next_model, "reason": diag})
-                        logger.warning(f"[VYORA AI] Falling back from '{active_model}' to '{next_model}' (fallback {fallback_attempts}/{max_fallbacks})")
-                        if on_stage:
-                            on_stage("ANALYZING_VIDEO", 72.0, f"Recovering with fallback model '{format_model_display_name(next_model)}'...")
-                        active_model = next_model
-                        selection_mode = "fallback"
-                        continue
-
-                raise HTTPException(status_code=500, detail=diag)
-
-            # Successfully received content
-            break
-
-        except HTTPException:
-            raise
-        except Exception as e:
-            clean_err = sanitize_error_message(e)
-            err_lower = clean_err.lower()
-
-            # 401 unauthenticated or 403 permission denied across project - do not swap models
-            if "401" in clean_err or "api_key_invalid" in err_lower or "unauthenticated" in err_lower:
-                raise map_gemini_error(e, action="Extraction", model_name=active_model, is_youtube=is_youtube)
-            if "403" in clean_err or "permission_denied" in err_lower:
-                raise map_gemini_error(e, action="Extraction", model_name=active_model, is_youtube=is_youtube)
-
-            # Model unavailable/deprecated/not found -> Fallback
-            is_model_unavailable = (
-                "404" in clean_err or
-                "not_found" in err_lower or
-                "no longer available" in err_lower or
-                "not found" in err_lower or
-                "unsupported model" in err_lower
+            response = await asyncio.to_thread(
+                client.models.generate_content,
+                model=active_model,
+                contents=[uploaded_content, prompt_text],
+                config=gen_config,
             )
+        finally:
+            heartbeat_cancelled.set()
+            await heartbeat_task
 
-            if is_model_unavailable and fallback_attempts < max_fallbacks:
-                fallback_attempts += 1
-                next_model = blacklist_failed_model(active_model, api_key=resolved_key, reason=clean_err)
-                if next_model and next_model != active_model:
-                    fallback_history.append({"from": active_model, "to": next_model, "reason": clean_err})
-                    logger.warning(f"[VYORA AI] Model '{active_model}' unavailable ({clean_err}). Falling back to '{next_model}' (fallback {fallback_attempts}/{max_fallbacks})")
-                    if on_stage:
-                        on_stage("ANALYZING_VIDEO", 72.0, f"Recovering with fallback model '{format_model_display_name(next_model)}'...")
-                    active_model = next_model
-                    selection_mode = "fallback"
-                    continue
-
-            # Transient rate limit or 503
-            if ("429" in clean_err or "503" in clean_err or "resource_exhausted" in err_lower) and fallback_attempts < 2:
-                fallback_attempts += 1
-                backoff = 2.0 * fallback_attempts
-                logger.warning(f"[VYORA AI] Transient error from Gemini ({clean_err}). Retrying in {backoff}s...")
-                await asyncio.sleep(backoff)
-                continue
-
-            raise map_gemini_error(e, action="Extraction", model_name=active_model, is_youtube=is_youtube)
-
-    if on_stage:
-        on_stage("GENERATING_CHAPTERS", 85.0, "Synthesizing timestamped chapters and knowledge graph...")
-
-    try:
-        raw_text = clean_json_text(resp_text)
-        data = json.loads(raw_text)
-
-        log_diagnostic(
-            event="RESPONSE_PARSED",
+        parsed = parse_structured_gemini_response(
+            response=response,
+            schema_model=schema_model,
+            stage_name=stage_name,
             job_id=jid,
             correlation_id=cid,
-            stage="GENERATING_CHAPTERS",
+            model_name=active_model,
+        )
+
+        log_diagnostic(
+            event="INFERENCE_STAGE_COMPLETED",
+            job_id=jid,
+            correlation_id=cid,
+            stage=stage_name,
             elapsed_seconds=time.time() - ext_start_time,
             status="SUCCESS",
             model_id=active_model,
             file_id=file_id,
-            details={"chapter_count": len(data.get("chapters", [])), "transcript_count": len(data.get("transcript", []))},
+            details={"stage": stage_name},
         )
+        return parsed
 
-        # Ensure core fields are populated
-        data["file_id"] = file_id
-        data["filename"] = media_display_name
-        data["media_type"] = "video" if is_video else "audio"
-        data["created_at"] = datetime.now().isoformat()
-        data["selected_model"] = active_model
-        data["model_selection_mode"] = selection_mode
-        if source_url:
-            data["source_url"] = source_url
-        
-        if "duration_seconds" not in data or not data["duration_seconds"]:
-            data["duration_seconds"] = 120.0
-        if "duration_formatted" not in data or not data["duration_formatted"]:
-            data["duration_formatted"] = format_seconds(data["duration_seconds"])
+    async def _run_stage_with_recovery(
+        stage_name: str,
+        system_instruction: str,
+        prompt_text: str,
+        schema_model: Any,
+        progress_start: float,
+        progress_end: float,
+        progress_label: str,
+        max_tokens: int = 4096,
+    ) -> Any:
+        nonlocal active_model, selection_mode, fallback_attempts
+        attempt = 0
+        while attempt < 2:
+            try:
+                return await _execute_gemini_stage(
+                    stage_name=stage_name,
+                    system_instruction=system_instruction,
+                    prompt_text=prompt_text,
+                    schema_model=schema_model,
+                    progress_start=progress_start,
+                    progress_end=progress_end,
+                    progress_label=progress_label,
+                    max_tokens=max_tokens,
+                )
+            except HTTPException as he:
+                if he.status_code in (401, 403):
+                    raise he
+                attempt += 1
+                if attempt >= 2:
+                    raise he
+                logger.warning(f"[VYORA AI] Retrying stage '{stage_name}' (attempt {attempt+1}/2)...")
+                await asyncio.sleep(2.0)
+            except Exception as e:
+                clean_err = sanitize_error_message(e)
+                err_lower = clean_err.lower()
 
-        # Validate chapter timing
-        if "chapters" in data and isinstance(data["chapters"], list):
-            for ch in data["chapters"]:
-                if "start_time" in ch and ("start_time_formatted" not in ch or not ch["start_time_formatted"]):
-                    ch["start_time_formatted"] = format_seconds(ch["start_time"])
-                if "end_time" in ch and ("end_time_formatted" not in ch or not ch["end_time_formatted"]):
-                    ch["end_time_formatted"] = format_seconds(ch["end_time"])
+                if "401" in clean_err or "unauthenticated" in err_lower or "403" in clean_err or "permission_denied" in err_lower:
+                    raise map_gemini_error(e, action="Extraction", model_name=active_model, is_youtube=is_youtube)
 
-        # Validate transcript timing
-        if "transcript" in data and isinstance(data["transcript"], list):
-            for tr in data["transcript"]:
-                if "start_time" in tr and ("start_time_formatted" not in tr or not tr["start_time_formatted"]):
-                    tr["start_time_formatted"] = format_seconds(tr["start_time"])
-                if "end_time" in tr and ("end_time_formatted" not in tr or not tr["end_time_formatted"]):
-                    tr["end_time_formatted"] = format_seconds(tr["end_time"])
+                is_model_unavailable = ("404" in clean_err or "not_found" in err_lower or "no longer available" in err_lower)
+                if is_model_unavailable and fallback_attempts < max_fallbacks:
+                    fallback_attempts += 1
+                    next_model = blacklist_failed_model(active_model, api_key=resolved_key, reason=clean_err)
+                    if next_model and next_model != active_model:
+                        fallback_history.append({"from": active_model, "to": next_model, "reason": clean_err})
+                        active_model = next_model
+                        selection_mode = "fallback"
+                        continue
 
-        result = MediaAnalysisResult(**data)
-        save_cache_result(result)
+                attempt += 1
+                if attempt >= 2:
+                    raise map_gemini_error(e, action="Extraction", model_name=active_model, is_youtube=is_youtube)
+                await asyncio.sleep(2.0)
 
-        # Free temporary allocations back to OS (Render Free Tier memory optimization)
-        import gc
-        gc.collect()
+    # -------------------------------------------------------------
+    # STAGE A: Core Overview & Executive Summary & Action Items
+    # -------------------------------------------------------------
+    overview_sys_instruction = (
+        "You are an expert Media Knowledge Extractor for VYORA AI.\n"
+        "Your task is to analyze the high-level themes, arguments, overview, duration, and key takeaways.\n"
+        "Generate a structured JSON overview matching the schema strictly."
+    )
+    overview_prompt = (
+        f"Analyze this {'video' if is_video else 'audio'} file '{media_display_name}'.\n"
+        "Extract the concise title, total duration in seconds and formatted (MM:SS), "
+        "a 2-3 sentence overview, a rich executive summary (2-4 paragraphs), "
+        "4-8 key takeaways, actionable next steps, and sentiment/tone analysis."
+    )
+    overview_res: MediaOverviewExtraction = await _run_stage_with_recovery(
+        stage_name="ANALYZING_VIDEO",
+        system_instruction=overview_sys_instruction,
+        prompt_text=overview_prompt,
+        schema_model=MediaOverviewExtraction,
+        progress_start=68.0,
+        progress_end=76.0,
+        progress_label="Analyzing video overview & executive summary",
+        max_tokens=4096,
+    )
 
-        return result
+    # -------------------------------------------------------------
+    # STAGE B: Timestamped Chapters & Key Moments
+    # -------------------------------------------------------------
+    chapters_sys_instruction = (
+        "You are an expert Video Segmentation specialist for VYORA AI.\n"
+        "Your task is to identify the logical, chronological chapters throughout the media.\n"
+        "Each chapter must have start_time, end_time, title, summary, and 2-4 key moments."
+    )
+    chapters_prompt = (
+        f"Analyze the chronological structure of '{media_display_name}'.\n"
+        "Generate a chronological list of distinct, non-overlapping chapters covering the entire duration from 00:00 to the end.\n"
+        "Ensure all start_time and end_time values are strictly non-negative numbers and formatted correctly as MM:SS."
+    )
+    chapters_res: MediaChaptersExtraction = await _run_stage_with_recovery(
+        stage_name="GENERATING_CHAPTERS",
+        system_instruction=chapters_sys_instruction,
+        prompt_text=chapters_prompt,
+        schema_model=MediaChaptersExtraction,
+        progress_start=76.0,
+        progress_end=84.0,
+        progress_label="Synthesizing chronological chapters & key moments",
+        max_tokens=4096,
+    )
 
-    except json.JSONDecodeError as jde:
-        raise HTTPException(status_code=500, detail=f"Failed to parse Gemini JSON response: {str(jde)}")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise map_gemini_error(e, action="Extraction", model_name=active_model)
+    # -------------------------------------------------------------
+    # STAGE C: Spoken Dialogue Transcript, Visual Scenes & Entities
+    # -------------------------------------------------------------
+    scenes_sys_instruction = (
+        "You are an expert Multimodal Knowledge Extractor for VYORA AI.\n"
+        "Your task is to extract timestamped dialogue segments, visual scene descriptions with OCR text, and key entities.\n"
+        "Group spoken dialogue into meaningful segment chunks (approx 15-45 seconds per segment).\n"
+        "For videos, describe visible slides, code, diagrams, or presentations.\n"
+        "For audio-only, describe audio cues and tone phases."
+    )
+    scenes_prompt = (
+        f"Analyze the spoken dialogue and visual content of '{media_display_name}'.\n"
+        "Extract:\n"
+        "1. 'transcript': chronological spoken dialogue segments with timestamps and speaker labels.\n"
+        "2. 'visual_scenes': chronological visual scene descriptions with OCR text visible on screen.\n"
+        "3. 'entities': key technologies, concepts, and people mentioned."
+    )
+    scenes_res: MediaTranscriptAndScenesExtraction = await _run_stage_with_recovery(
+        stage_name="SYNTHESIZING_INTELLIGENCE",
+        system_instruction=scenes_sys_instruction,
+        prompt_text=scenes_prompt,
+        schema_model=MediaTranscriptAndScenesExtraction,
+        progress_start=84.0,
+        progress_end=92.0,
+        progress_label="Extracting spoken dialogue, visual scenes & entities",
+        max_tokens=8192,
+    )
+
+    # -------------------------------------------------------------
+    # STAGE D: Combine, Validate & Persist
+    # -------------------------------------------------------------
+    if on_stage:
+        on_stage("SAVING_RESULTS", 94.0, "Synthesizing and validating combined knowledge graph...")
+
+    # Validate duration
+    duration_sec = getattr(overview_res, "duration_seconds", 120.0) or 120.0
+    if duration_sec <= 0:
+        duration_sec = 120.0
+    duration_fmt = getattr(overview_res, "duration_formatted", "") or format_seconds(duration_sec)
+
+    # Validate chapters
+    chapters = getattr(chapters_res, "chapters", []) or []
+    if len(chapters) == 0:
+        chapters = [
+            Chapter(
+                start_time=0.0,
+                start_time_formatted="00:00",
+                end_time=duration_sec,
+                end_time_formatted=duration_fmt,
+                title=getattr(overview_res, "title", "Full Presentation") or "Full Presentation",
+                summary=getattr(overview_res, "overview", "Complete recording") or "Complete recording",
+                key_moments=getattr(overview_res, "key_takeaways", [])[:3] or ["Key discussion"],
+            )
+        ]
+    else:
+        for ch in chapters:
+            if ch.start_time is None:
+                ch.start_time = 0.0
+            if not ch.start_time_formatted:
+                ch.start_time_formatted = format_seconds(ch.start_time)
+            if ch.end_time is None:
+                ch.end_time = duration_sec
+            if not ch.end_time_formatted:
+                ch.end_time_formatted = format_seconds(ch.end_time)
+
+    # Validate transcript segments
+    transcript = getattr(scenes_res, "transcript", []) or []
+    for tr in transcript:
+        if tr.start_time is None:
+            tr.start_time = 0.0
+        if not tr.start_time_formatted:
+            tr.start_time_formatted = format_seconds(tr.start_time)
+        if tr.end_time is None:
+            tr.end_time = tr.start_time + 5.0
+        if not tr.end_time_formatted:
+            tr.end_time_formatted = format_seconds(tr.end_time)
+
+    # Validate visual scenes
+    visual_scenes = getattr(scenes_res, "visual_scenes", []) or []
+    for vs in visual_scenes:
+        if vs.start_time is None:
+            vs.start_time = 0.0
+        if not vs.start_time_formatted:
+            vs.start_time_formatted = format_seconds(vs.start_time)
+        if vs.end_time is None:
+            vs.end_time = vs.start_time + 10.0
+        if not vs.end_time_formatted:
+            vs.end_time_formatted = format_seconds(vs.end_time)
+
+    entities = getattr(scenes_res, "entities", []) or []
+    action_items = getattr(overview_res, "action_items", []) or []
+    key_takeaways = getattr(overview_res, "key_takeaways", []) or []
+    sentiment_and_tone = getattr(overview_res, "sentiment_and_tone", {}) or {}
+
+    combined_data = {
+        "file_id": file_id,
+        "filename": media_display_name,
+        "media_type": "video" if is_video else "audio",
+        "duration_seconds": duration_sec,
+        "duration_formatted": duration_fmt,
+        "title": getattr(overview_res, "title", media_display_name) or media_display_name,
+        "overview": getattr(overview_res, "overview", "Video overview") or "Video overview",
+        "executive_summary": getattr(overview_res, "executive_summary", "") or getattr(overview_res, "overview", ""),
+        "key_takeaways": key_takeaways,
+        "chapters": [c.model_dump() for c in chapters],
+        "transcript": [t.model_dump() for t in transcript],
+        "visual_scenes": [v.model_dump() for v in visual_scenes],
+        "entities": [e.model_dump() for e in entities],
+        "action_items": [a.model_dump() for a in action_items],
+        "sentiment_and_tone": sentiment_and_tone,
+        "created_at": datetime.now().isoformat(),
+        "selected_model": active_model,
+        "model_selection_mode": selection_mode,
+        "source_url": source_url,
+    }
+
+    result = MediaAnalysisResult(**combined_data)
+    save_cache_result(result)
+
+    log_diagnostic(
+        event="JOB_COMPLETED",
+        job_id=jid,
+        correlation_id=cid,
+        stage="SAVING_RESULTS",
+        elapsed_seconds=time.time() - ext_start_time,
+        status="SUCCESS",
+        model_id=active_model,
+        file_id=file_id,
+        details={
+            "chapters_count": len(result.chapters),
+            "transcript_count": len(result.transcript),
+            "scenes_count": len(result.visual_scenes),
+            "entities_count": len(result.entities),
+        }
+    )
+
+    import gc
+    gc.collect()
+
+    return result

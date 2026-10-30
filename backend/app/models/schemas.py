@@ -70,6 +70,31 @@ class MediaAnalysisResult(BaseModel):
     model_selection_mode: Optional[str] = Field("automatic", description="Model selection mode (automatic or preferred_override)")
     source_url: Optional[str] = Field(None, description="Optional remote stream/YouTube URL")
 
+class MediaOverviewExtraction(BaseModel):
+    title: str = Field(..., description="A concise, descriptive title for the media content")
+    duration_seconds: float = Field(default=120.0, description="Estimated total duration in seconds")
+    duration_formatted: str = Field(default="02:00", description="Formatted duration string (e.g. '04:15' or '01:23:45')")
+    overview: str = Field(..., description="2-3 sentence high-level overview")
+    executive_summary: str = Field(..., description="Rich, detailed executive summary covering major themes, arguments, and conclusions")
+    key_takeaways: List[str] = Field(default_factory=list, description="4-8 bullet points highlighting key insights")
+    action_items: List[ActionItem] = Field(default_factory=list, description="Actionable next steps or takeaways")
+    sentiment_and_tone: Dict[str, Any] = Field(default_factory=dict, description="Overall tone, energy level, and communication style")
+
+class MediaChaptersExtraction(BaseModel):
+    chapters: List[Chapter] = Field(default_factory=list, description="Chronological chapters covering the entire duration with key moments")
+
+class MediaTranscriptAndScenesExtraction(BaseModel):
+    transcript: List[TranscriptSegment] = Field(default_factory=list, description="Timestamped spoken dialogue segments")
+    visual_scenes: List[VisualScene] = Field(default_factory=list, description="Chronological visual scene descriptions and OCR")
+    entities: List[EntityItem] = Field(default_factory=list, description="Key entities and technologies mentioned")
+
+class ExtractionErrorDetail(BaseModel):
+    error_code: str = Field(..., description="Machine-readable error code: e.g. GEMINI_RESPONSE_TRUNCATED, GEMINI_TOKEN_LIMIT")
+    message: str = Field(..., description="User-safe descriptive message")
+    job_id: Optional[str] = None
+    stage: Optional[str] = None
+    retryable: bool = True
+
 class ChatMessage(BaseModel):
     role: str  # 'user' or 'assistant'
     content: str

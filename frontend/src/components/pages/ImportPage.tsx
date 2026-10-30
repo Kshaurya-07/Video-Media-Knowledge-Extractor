@@ -41,6 +41,7 @@ export const ImportPage: React.FC<ImportPageProps> = ({
   const [statusMessage, setStatusMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [systemConfig, setSystemConfig] = useState<SystemConfig | null>(null);
+  const [cachedUploadedFile, setCachedUploadedFile] = useState<{ file: File; fileId: string } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -107,10 +108,15 @@ export const ImportPage: React.FC<ImportPageProps> = ({
         if (!selectedFile) {
           throw new Error('Please select a video or audio file to upload.');
         }
-        setStatusMessage('Streaming media directly to backend storage in 64KB chunks...');
-        // Step 1: Upload file to backend
-        const uploaded = await uploadMedia(selectedFile);
-        fileId = uploaded.file_id;
+        if (cachedUploadedFile && cachedUploadedFile.file === selectedFile && cachedUploadedFile.fileId) {
+          fileId = cachedUploadedFile.fileId;
+          setStatusMessage('Reusing uploaded video container from server storage (zero upload delay)...');
+        } else {
+          setStatusMessage('Streaming media directly to backend storage in 64KB chunks...');
+          const uploaded = await uploadMedia(selectedFile);
+          fileId = uploaded.file_id;
+          setCachedUploadedFile({ file: selectedFile, fileId: uploaded.file_id });
+        }
       } else {
         if (!videoUrl.trim()) {
           throw new Error('Please provide a valid video URL.');
@@ -148,6 +154,7 @@ export const ImportPage: React.FC<ImportPageProps> = ({
         setErrorMessage('File size exceeds the 500MB limit.');
         return;
       }
+      setCachedUploadedFile(null);
       setSelectedFile(file);
     }
   };
@@ -229,6 +236,7 @@ export const ImportPage: React.FC<ImportPageProps> = ({
                         setErrorMessage('File size exceeds the 500MB limit.');
                         return;
                       }
+                      setCachedUploadedFile(null);
                       setSelectedFile(file);
                     }
                   }}
@@ -301,7 +309,11 @@ export const ImportPage: React.FC<ImportPageProps> = ({
                   errorMessage.toLowerCase().includes('unauthenticated') ||
                   errorMessage.toLowerCase().includes('401')) &&
                 !errorMessage.toLowerCase().includes('timeout') &&
-                !errorMessage.toLowerCase().includes('worker') ? (
+                !errorMessage.toLowerCase().includes('worker') &&
+                !errorMessage.toLowerCase().includes('json') &&
+                !errorMessage.toLowerCase().includes('parse') &&
+                !errorMessage.toLowerCase().includes('stage') &&
+                !errorMessage.toLowerCase().includes('gemini_') ? (
                   <button
                     type="button"
                     onClick={onOpenSettings}
