@@ -1,5 +1,6 @@
 import React from 'react';
-import { Sparkles, Key, CheckCircle, AlertCircle, FileText, Code2 } from 'lucide-react';
+import { Sparkles, Key, CheckCircle, AlertCircle, FileText, Code2, RefreshCw } from 'lucide-react';
+import { BackendConnectionState } from '../lib/api';
 
 interface HeaderProps {
   hasKey: boolean;
@@ -8,6 +9,7 @@ interface HeaderProps {
   onOpenExport?: () => void;
   hasAnalysis: boolean;
   mediaTitle?: string;
+  connectionState?: BackendConnectionState;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -17,6 +19,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenExport,
   hasAnalysis,
   mediaTitle,
+  connectionState = 'connected',
 }) => {
   return (
     <header className="border-b border-slate-800/80 bg-slate-950/70 backdrop-blur-md sticky top-0 z-30 px-6 py-3.5">
@@ -62,29 +65,48 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           )}
 
-          {/* API Key Status Pill */}
-          <button
-            onClick={onOpenSettings}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
-              serverKeyConfigured || hasKey
-                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20'
-                : 'bg-amber-500/10 border-amber-500/30 text-amber-300 hover:bg-amber-500/20 animate-pulse'
-            }`}
-          >
-            <Key className="w-3.5 h-3.5" />
-            <span>
-              {serverKeyConfigured
-                ? 'Server API Active'
-                : hasKey
-                ? 'Gemini Active'
-                : 'Enter API Key'}
-            </span>
-            {serverKeyConfigured || hasKey ? (
-              <CheckCircle className="w-3 h-3 text-emerald-400" />
-            ) : (
-              <AlertCircle className="w-3 h-3 text-amber-400" />
-            )}
-          </button>
+          {/* Connection / API Key Status Pill */}
+          {connectionState === 'waking_up' ? (
+            <div
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium bg-amber-500/10 border-amber-500/30 text-amber-300 animate-pulse"
+              title="Render Free Plan container is waking up (~30-50s)"
+            >
+              <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-400" />
+              <span>Waking Up (~30s)</span>
+            </div>
+          ) : connectionState === 'offline' ? (
+            <button
+              onClick={onOpenSettings}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium bg-rose-500/10 border-rose-500/30 text-rose-300 hover:bg-rose-500/20"
+              title="Backend is currently offline or unreachable"
+            >
+              <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
+              <span>Backend Offline</span>
+            </button>
+          ) : (
+            <button
+              onClick={onOpenSettings}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+                serverKeyConfigured || hasKey
+                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20'
+                  : 'bg-amber-500/10 border-amber-500/30 text-amber-300 hover:bg-amber-500/20 animate-pulse'
+              }`}
+            >
+              <Key className="w-3.5 h-3.5" />
+              <span>
+                {serverKeyConfigured
+                  ? 'Server API Active'
+                  : hasKey
+                  ? 'Gemini Active'
+                  : 'Enter API Key'}
+              </span>
+              {serverKeyConfigured || hasKey ? (
+                <CheckCircle className="w-3 h-3 text-emerald-400" />
+              ) : (
+                <AlertCircle className="w-3 h-3 text-amber-400" />
+              )}
+            </button>
+          )}
 
           <a
             href="https://github.com/Kshaurya-07/Video-Media-Knowledge-Extractor"

@@ -14,6 +14,7 @@ from google.genai import types
 from fastapi import HTTPException
 
 from app.config import DEFAULT_MODEL, DATA_CACHE_DIR, get_api_key
+from app.database import get_db
 from app.services.model_discovery_service import (
     get_active_model_selection,
     blacklist_failed_model,
@@ -373,63 +374,107 @@ async def extract_media_knowledge(
         if on_stage:
             on_stage("SENDING_TO_AI", 50.0, "Synchronizing video stream tokens with Gemini multimodal engine...")
     else:
-        # Note: google-genai SDK requires passing mime_type via types.UploadFileConfig
-        if on_stage:
-            on_stage("EXTRACTING_MEDIA", 35.0, f"Validating media streams and preparing {media_path.name}...")
+        # Optimization for Render Free Tier: Reuse valid existing Gemini file references
+        existing_ref = FILE_REF_REGISTRY.get(file_id)
+        if not existing_ref:
+            try:
+                with get_db() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT gemini_file_name FROM projects WHERE id = ?", (file_id,))
+                    row = cursor.fetchone()
+                    if row and row["gemini_file_name"]:
+                        existing_ref = row["gemini_file_name"]
+            except Exception:
+                pass
 
-        try:
-            if on_stage:
-                on_stage("SENDING_TO_AI", 45.0, f"Uploading {media_path.name} to Gemini Files API...")
+        uploaded_file = None
+        file_name = None
 
-            upload_config = types.UploadFileConfig(
-                mime_type=mime_type,
-                display_name=media_path.name[:100]
-            )
-            uploaded_file = await asyncio.to_thread(
-                client.files.upload,
-                file=str(media_path),
-                config=upload_config
-            )
-            if not uploaded_file or not getattr(uploaded_file, "name", None):
-                raise HTTPException(status_code=500, detail="Gemini Files API upload failed (empty response received).")
-
-            uploaded_content = uploaded_file
-            file_name = uploaded_file.name
-            FILE_REF_REGISTRY[file_id] = file_name
-
-            # For video/large files, poll file state until ACTIVE asynchronously
-            if is_video or (hasattr(uploaded_file, "state") and uploaded_file.state):
-                max_wait = 360  # up to 6 minutes
-                start_wait = time.time()
+        if existing_ref:
+            try:
                 if on_stage:
-                    on_stage("SENDING_TO_AI", 50.0, "Gemini processing video frames & audio tracks...")
+                    on_stage("SENDING_TO_AI", 45.0, f"Checking existing Gemini file reference ({existing_ref})...")
+                candidate = await asyncio.to_thread(client.files.get, name=existing_ref)
+                if candidate and hasattr(candidate, "state"):
+                    state_str = str(candidate.state)
+                    if not (candidate.state == types.FileState.FAILED or state_str.endswith("FAILED")):
+                        uploaded_file = candidate
+                        uploaded_content = candidate
+                        file_name = existing_ref
+                        FILE_REF_REGISTRY[file_id] = file_name
+                        if on_stage:
+                            on_stage("SENDING_TO_AI", 50.0, f"Reusing cached Gemini file reference ({file_name})...")
+            except Exception as e:
+                logger.info(f"Cached Gemini file reference {existing_ref} expired or unreachable: {e}")
+                uploaded_file = None
 
-                while uploaded_file and uploaded_file.state and (
-                    uploaded_file.state == types.FileState.PROCESSING or
-                    str(uploaded_file.state).endswith("PROCESSING")
-                ):
-                    if time.time() - start_wait > max_wait:
-                        raise HTTPException(status_code=504, detail="Video processing timed out on Gemini Files API")
-                    await asyncio.sleep(3)
-                    refreshed = await asyncio.to_thread(client.files.get, name=file_name)
-                    if refreshed:
-                        uploaded_file = refreshed
-                    if on_stage:
-                        elapsed = int(time.time() - start_wait)
-                        pct = min(50.0 + (elapsed / max_wait) * 15.0, 65.0)
-                        on_stage("SENDING_TO_AI", pct, f"Ingesting multimodal temporal features ({elapsed}s)...")
+        if not uploaded_file:
+            # Note: google-genai SDK requires passing mime_type via types.UploadFileConfig
+            if on_stage:
+                on_stage("EXTRACTING_MEDIA", 35.0, f"Validating media streams and preparing {media_path.name}...")
 
-                if uploaded_file and uploaded_file.state and (
-                    uploaded_file.state == types.FileState.FAILED or
-                    str(uploaded_file.state).endswith("FAILED")
-                ):
-                    err_info = getattr(uploaded_file, 'error', 'Internal error')
-                    raise HTTPException(status_code=500, detail=f"Gemini failed to process media: {err_info}")
+            try:
+                if on_stage:
+                    on_stage("SENDING_TO_AI", 45.0, f"Uploading {media_path.name} to Gemini Files API...")
 
-        except HTTPException:
-            raise
-        except Exception as e:
-            raise map_gemini_error(e, action="Media upload", is_youtube=is_youtube)
+                upload_config = types.UploadFileConfig(
+                    mime_type=mime_type,
+                    display_name=media_path.name[:100]
+                )
+                uploaded_file = await asyncio.to_thread(
+                    client.files.upload,
+                    file=str(media_path),
+                    config=upload_config
+                )
+                if not uploaded_file or not getattr(uploaded_file, "name", None):
+                    raise HTTPException(status_code=500, detail="Gemini Files API upload failed (empty response received).")
+
+                uploaded_content = uploaded_file
+                file_name = uploaded_file.name
+                FILE_REF_REGISTRY[file_id] = file_name
+
+                # Persist to database so subsequent retries reuse it across restarts
+                try:
+                    with get_db() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute("UPDATE projects SET gemini_file_name = ? WHERE id = ?", (file_name, file_id))
+                        conn.commit()
+                except Exception as e:
+                    logger.warning(f"Could not persist gemini_file_name in projects: {e}")
+
+            except HTTPException:
+                raise
+            except Exception as e:
+                raise map_gemini_error(e, action="Media upload", is_youtube=is_youtube)
+
+        # For video/large files, poll file state until ACTIVE asynchronously
+        if is_video or (hasattr(uploaded_file, "state") and uploaded_file.state):
+            max_wait = 360  # up to 6 minutes
+            start_wait = time.time()
+            if on_stage:
+                on_stage("SENDING_TO_AI", 50.0, "Gemini processing video frames & audio tracks...")
+
+            while uploaded_file and uploaded_file.state and (
+                uploaded_file.state == types.FileState.PROCESSING or
+                str(uploaded_file.state).endswith("PROCESSING")
+            ):
+                if time.time() - start_wait > max_wait:
+                    raise HTTPException(status_code=504, detail="Video processing timed out on Gemini Files API")
+                await asyncio.sleep(3)
+                refreshed = await asyncio.to_thread(client.files.get, name=file_name)
+                if refreshed:
+                    uploaded_file = refreshed
+                if on_stage:
+                    elapsed = int(time.time() - start_wait)
+                    pct = min(50.0 + (elapsed / max_wait) * 15.0, 65.0)
+                    on_stage("SENDING_TO_AI", pct, f"Ingesting multimodal temporal features ({elapsed}s)...")
+
+            if uploaded_file and uploaded_file.state and (
+                uploaded_file.state == types.FileState.FAILED or
+                str(uploaded_file.state).endswith("FAILED")
+            ):
+                err_info = getattr(uploaded_file, 'error', 'Internal error')
+                raise HTTPException(status_code=500, detail=f"Gemini failed to process media: {err_info}")
 
     # 6. Resolve Model (Automatic Discovery or Configured)
     active_model = selected_model_override
@@ -574,6 +619,11 @@ async def extract_media_knowledge(
 
         result = MediaAnalysisResult(**data)
         save_cache_result(result)
+
+        # Free temporary allocations back to OS (Render Free Tier memory optimization)
+        import gc
+        gc.collect()
+
         return result
 
     except json.JSONDecodeError as jde:

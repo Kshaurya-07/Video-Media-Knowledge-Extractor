@@ -198,6 +198,8 @@ def init_db():
             cursor.execute("ALTER TABLE projects ADD COLUMN selected_model TEXT")
         if "source_url" not in proj_cols:
             cursor.execute("ALTER TABLE projects ADD COLUMN source_url TEXT")
+        if "gemini_file_name" not in proj_cols:
+            cursor.execute("ALTER TABLE projects ADD COLUMN gemini_file_name TEXT")
         
         conn.commit()
 

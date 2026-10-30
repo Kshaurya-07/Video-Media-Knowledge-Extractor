@@ -4,6 +4,7 @@ import struct
 import subprocess
 import json
 import logging
+import time
 from pathlib import Path
 from typing import Generator, Tuple, Dict, Any, Optional
 from fastapi import HTTPException
@@ -379,15 +380,17 @@ def inspect_media_file(filepath: Path) -> Dict[str, Any]:
 def range_stream(filepath: Path, range_header: str | None = None) -> Tuple[Generator, int, int, int, str]:
     """
     Supports HTTP Range requests for video/audio streaming with instant seeking.
+    Optimized for Render Free Tier (128KB chunks) to minimize RAM footprint.
     Returns: (generator, start, end, file_size, content_type)
     """
     file_size = filepath.stat().st_size
     mime_type = get_media_mime_type(filepath)
+    stream_chunk_size = 128 * 1024  # 128KB chunks
 
     if not range_header:
         def full_stream():
             with open(filepath, "rb") as f:
-                while chunk := f.read(1024 * 1024):
+                while chunk := f.read(stream_chunk_size):
                     yield chunk
         return full_stream(), 0, file_size - 1, file_size, mime_type
 
@@ -409,9 +412,8 @@ def range_stream(filepath: Path, range_header: str | None = None) -> Tuple[Gener
         with open(filepath, "rb") as f:
             f.seek(start)
             remaining = content_length
-            chunk_size = 1024 * 512  # 512KB chunks
             while remaining > 0:
-                read_bytes = min(remaining, chunk_size)
+                read_bytes = min(remaining, stream_chunk_size)
                 data = f.read(read_bytes)
                 if not data:
                     break
@@ -419,3 +421,44 @@ def range_stream(filepath: Path, range_header: str | None = None) -> Tuple[Gener
                 yield data
 
     return chunk_generator(), start, end, file_size, mime_type
+
+
+def cleanup_old_uploads(max_age_hours: float = 2.0, max_dir_size_mb: int = 250) -> int:
+    """
+    Render Free Tier disk optimizer:
+    Cleans up old uploaded media files from UPLOAD_DIR once processed or expired,
+    preventing ephemeral disk exhaustion while keeping DB metadata & Gemini references intact.
+    """
+    if not UPLOAD_DIR.exists():
+        return 0
+
+    now = time.time()
+    max_age_secs = max_age_hours * 3600
+    cleaned = 0
+
+    try:
+        files = [f for f in UPLOAD_DIR.glob("*") if f.is_file()]
+        total_size = sum(f.stat().st_size for f in files)
+        max_bytes = max_dir_size_mb * 1024 * 1024
+
+        # Sort files by modification time (oldest first)
+        files.sort(key=lambda f: f.stat().st_mtime)
+
+        for f in files:
+            if f.name.startswith("."):
+                continue
+            file_age = now - f.stat().st_mtime
+            # Delete if older than max_age_secs OR if total directory size exceeds max_bytes
+            if file_age > max_age_secs or total_size > max_bytes:
+                file_size = f.stat().st_size
+                try:
+                    f.unlink()
+                    cleaned += 1
+                    total_size -= file_size
+                    logger.info(f"Cleaned expired upload file {f.name} ({file_size} bytes)")
+                except Exception as e:
+                    logger.warning(f"Could not remove upload file {f.name}: {e}")
+    except Exception as e:
+        logger.error(f"Error during upload cleanup: {e}")
+
+    return cleaned

@@ -60,6 +60,52 @@ export function setStoredUser(user: { email: string; name: string } | null): voi
   }
 }
 
+export type BackendConnectionState = 'checking' | 'waking_up' | 'connected' | 'offline';
+
+export async function probeBackendWithBackoff(
+  onStateUpdate?: (state: BackendConnectionState, attempt: number, message: string) => void,
+  maxAttempts: number = 6
+): Promise<boolean> {
+  const delays = [0, 2000, 4000, 8000, 15000, 20000];
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const delay = delays[attempt] || 15000;
+    if (delay > 0) {
+      if (onStateUpdate) {
+        onStateUpdate(
+          'waking_up',
+          attempt + 1,
+          `Render Free Tier container is waking up (attempt ${attempt + 1}/${maxAttempts})...`
+        );
+      }
+      await new Promise((r) => setTimeout(r, delay));
+    } else if (onStateUpdate) {
+      onStateUpdate('checking', 1, 'Checking backend connection...');
+    }
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
+      const res = await fetch(`${API_BASE}/ready`, { signal: controller.signal });
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        if (onStateUpdate) {
+          onStateUpdate('connected', attempt + 1, 'Connected to backend.');
+        }
+        return true;
+      }
+    } catch {
+      // transient failure or timeout during cold start
+    }
+  }
+
+  if (onStateUpdate) {
+    onStateUpdate('offline', maxAttempts, 'Backend unreachable. Click to retry.');
+  }
+  return false;
+}
+
 export interface SystemConfig {
   provider: string;
   configured_model: string;

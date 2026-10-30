@@ -47,6 +47,7 @@ from app.services.media_service import (
     format_seconds,
     validate_media_file_content,
     inspect_media_file,
+    cleanup_old_uploads,
     MAX_MEDIA_FILE_SIZE_BYTES,
 )
 from app.services.gemini_extractor import (
@@ -84,8 +85,11 @@ async def lifespan(app: FastAPI):
     init_db()
     seed_demo_project_if_needed()
     recovered = recover_all_stale_jobs()
+    cleaned = cleanup_old_uploads(max_age_hours=2.0, max_dir_size_mb=200)
     if recovered > 0:
         logger.info(f"[VYORA AI] Cleaned up {recovered} orphaned processing jobs from prior runs.")
+    if cleaned > 0:
+        logger.info(f"[VYORA AI] Cleaned up {cleaned} expired uploaded files.")
     logger.info(f"[VYORA AI] Initialized engine. Configured Gemini model: {DEFAULT_MODEL}")
     yield
 
@@ -482,10 +486,14 @@ async def upload_media(file: UploadFile = File(...)):
 
     save_path = UPLOAD_DIR / f"{file_id}{suffix}"
 
+    # Render Free Tier ephemeral disk guard: clean old files before receiving new upload
+    cleanup_old_uploads(max_age_hours=2.0, max_dir_size_mb=200)
+
     file_size = 0
     try:
         with open(save_path, "wb") as buffer:
-            while chunk := await file.read(1024 * 1024):
+            # 64KB chunks to keep memory footprint minimal on Render Free Tier (512MB RAM)
+            while chunk := await file.read(64 * 1024):
                 file_size += len(chunk)
                 if file_size > MAX_MEDIA_FILE_SIZE_BYTES:
                     buffer.close()
