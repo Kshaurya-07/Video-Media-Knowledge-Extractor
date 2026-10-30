@@ -723,6 +723,7 @@ async def chat_with_media(
 
 @app.api_route("/api/media/{file_id}", methods=["GET", "HEAD"])
 @app.api_route("/api/stream/{file_id}", methods=["GET", "HEAD"])
+@app.api_route("/api/media/stream/{file_id}", methods=["GET", "HEAD"])
 async def stream_media(file_id: str, request: Request):
     try:
         media_path = get_media_path(file_id)
