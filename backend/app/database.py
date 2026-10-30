@@ -191,6 +191,8 @@ def init_db():
             cursor.execute("ALTER TABLE processing_jobs ADD COLUMN model_selection_mode TEXT")
         if "fallback_history" not in job_cols:
             cursor.execute("ALTER TABLE processing_jobs ADD COLUMN fallback_history TEXT")
+        if "correlation_id" not in job_cols:
+            cursor.execute("ALTER TABLE processing_jobs ADD COLUMN correlation_id TEXT")
 
         cursor.execute("PRAGMA table_info(projects)")
         proj_cols = [row["name"] for row in cursor.fetchall()]

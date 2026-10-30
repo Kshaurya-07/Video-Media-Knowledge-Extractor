@@ -34,9 +34,9 @@ INCOMPATIBLE_NAME_PATTERNS = [
     "aqa",
     "bison",
     "gecko",
-    "gemini-2.5-flash",  # Deprecated by Google for new users
     "gemini-1.0-pro",
     "gemini-1.0-ultra",
+    "gemini-2.5-flash",
     "medlm",
 ]
 
@@ -164,6 +164,8 @@ def assess_model_compatibility(
     score = 500
     if "3.8-flash" in mid_lower:
         score = 1000
+    elif "2.5-flash" in mid_lower:
+        score = 950
     elif "2.0-flash" in mid_lower:
         score = 900
     elif "1.5-flash" in mid_lower:

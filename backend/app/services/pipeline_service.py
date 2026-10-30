@@ -16,12 +16,13 @@ from app.services.model_discovery_service import (
     format_model_display_name,
 )
 from app.services.media_service import format_seconds, get_media_mime_type
+from app.services.diagnostic_logger import log_diagnostic
 
 # In-memory job tracker for immediate reactivity
 ACTIVE_JOBS: Dict[str, Dict[str, Any]] = {}
 
-# Stale job timeout in seconds (default: 5 minutes)
-JOB_INACTIVITY_TIMEOUT_SECONDS = 300.0
+# Stale job timeout in seconds (15 minutes for long video inference)
+JOB_INACTIVITY_TIMEOUT_SECONDS = 900.0
 
 def recover_all_stale_jobs() -> int:
     """
@@ -129,14 +130,17 @@ def update_job_status(
     selected_model: Optional[str] = None,
     model_selection_mode: Optional[str] = None,
     fallback_history: Optional[str] = None,
+    correlation_id: Optional[str] = None,
 ):
     current = ACTIVE_JOBS.get(job_id, {})
     model = selected_model or current.get("selected_model")
     mode = model_selection_mode or current.get("model_selection_mode", "automatic")
     fb_hist = fallback_history or current.get("fallback_history")
+    corr_id = correlation_id or current.get("correlation_id", job_id[:8])
 
     ACTIVE_JOBS[job_id] = {
         "job_id": job_id,
+        "correlation_id": corr_id,
         "project_id": project_id or current.get("project_id"),
         "stage": stage,
         "progress_percent": progress,
@@ -153,12 +157,22 @@ def update_job_status(
         UPDATE processing_jobs
         SET stage = ?, progress_percent = ?, message = ?, error_message = ?,
             selected_model = ?, model_selection_mode = ?, fallback_history = ?,
-            updated_at = CURRENT_TIMESTAMP
+            correlation_id = ?, updated_at = CURRENT_TIMESTAMP
         WHERE job_id = ?
-        """, (stage, progress, message, error, model, mode, fb_hist, job_id))
+        """, (stage, progress, message, error, model, mode, fb_hist, corr_id, job_id))
         conn.commit()
 
-async def process_media_background_job(job_id: str, project_id: str, file_path: Path, api_key: Optional[str] = None):
+async def process_media_background_job(
+    job_id: str,
+    project_id: str,
+    file_path: Path,
+    api_key: Optional[str] = None,
+    correlation_id: Optional[str] = None,
+):
+    job_start_time = time.time()
+    corr_id = correlation_id or str(uuid.uuid4())[:8]
+    resolved_model = None
+
     try:
         # Pre-resolve model for this job to lock it in and display it in progress status
         resolved_model, selection_mode, _ = get_active_model_selection(api_key=api_key)
@@ -173,6 +187,7 @@ async def process_media_background_job(job_id: str, project_id: str, file_path: 
                 project_id=project_id,
                 selected_model=resolved_model,
                 model_selection_mode=selection_mode,
+                correlation_id=corr_id,
             )
 
         # Initial stages
@@ -186,6 +201,8 @@ async def process_media_background_job(job_id: str, project_id: str, file_path: 
                 api_key=api_key,
                 on_stage=on_stage,
                 selected_model_override=resolved_model,
+                job_id=job_id,
+                correlation_id=corr_id,
             )
         except Exception as e:
             # Only allow demo cache for the pre-seeded demo presentation; real user projects fail truthfully
@@ -204,6 +221,16 @@ async def process_media_background_job(job_id: str, project_id: str, file_path: 
 
         # Saving structured intelligence
         on_stage("SAVING_RESULTS", 95.0, f"Persisting structured knowledge (analyzed with {format_model_display_name(final_model)})...")
+        log_diagnostic(
+            event="RESULTS_SAVED",
+            job_id=job_id,
+            correlation_id=corr_id,
+            stage="SAVING_RESULTS",
+            elapsed_seconds=time.time() - job_start_time,
+            status="INFO",
+            model_id=final_model,
+            file_id=project_id,
+        )
         
         with get_db() as conn:
             cursor = conn.cursor()
@@ -312,6 +339,17 @@ async def process_media_background_job(job_id: str, project_id: str, file_path: 
             project_id=project_id,
             selected_model=final_model,
             model_selection_mode=final_mode,
+            correlation_id=corr_id,
+        )
+        log_diagnostic(
+            event="JOB_COMPLETED",
+            job_id=job_id,
+            correlation_id=corr_id,
+            stage="COMPLETED",
+            elapsed_seconds=time.time() - job_start_time,
+            status="SUCCESS",
+            model_id=final_model,
+            file_id=project_id,
         )
 
     except Exception as exc:
@@ -322,7 +360,20 @@ async def process_media_background_job(job_id: str, project_id: str, file_path: 
             0.0,
             f"Processing failed: {sanitized_err}",
             error=sanitized_err,
-            project_id=project_id
+            project_id=project_id,
+            correlation_id=corr_id,
+        )
+        log_diagnostic(
+            event="JOB_FAILED",
+            job_id=job_id,
+            correlation_id=corr_id,
+            stage="FAILED",
+            elapsed_seconds=time.time() - job_start_time,
+            status="ERROR",
+            error_class=exc.__class__.__name__,
+            error_message=sanitized_err,
+            model_id=resolved_model,
+            file_id=project_id,
         )
         with get_db() as conn:
             cursor = conn.cursor()

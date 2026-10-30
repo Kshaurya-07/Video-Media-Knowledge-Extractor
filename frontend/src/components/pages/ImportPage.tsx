@@ -297,13 +297,27 @@ export const ImportPage: React.FC<ImportPageProps> = ({
                   <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
                   <span>{errorMessage}</span>
                 </div>
-                <button
-                  type="button"
-                  onClick={onOpenSettings}
-                  className="px-3 py-1 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-200 text-xs font-semibold transition-colors"
-                >
-                  Configure Key
-                </button>
+                {(errorMessage.toLowerCase().includes('api key') ||
+                  errorMessage.toLowerCase().includes('unauthenticated') ||
+                  errorMessage.toLowerCase().includes('401')) &&
+                !errorMessage.toLowerCase().includes('timeout') &&
+                !errorMessage.toLowerCase().includes('worker') ? (
+                  <button
+                    type="button"
+                    onClick={onOpenSettings}
+                    className="px-3 py-1 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-200 text-xs font-semibold transition-colors shrink-0"
+                  >
+                    Configure Key
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleStartProcessing}
+                    className="px-3 py-1 rounded-lg bg-violet-500/20 hover:bg-violet-500/30 text-violet-200 text-xs font-semibold transition-colors shrink-0"
+                  >
+                    Retry Extraction
+                  </button>
+                )}
               </div>
             )}
 

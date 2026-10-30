@@ -1,6 +1,7 @@
 import os
 import uuid
 import json
+import time
 import shutil
 import asyncio
 from pathlib import Path
@@ -50,6 +51,7 @@ from app.services.media_service import (
     cleanup_old_uploads,
     MAX_MEDIA_FILE_SIZE_BYTES,
 )
+from app.services.diagnostic_logger import log_diagnostic
 from app.services.gemini_extractor import (
     extract_media_knowledge,
     get_cached_result,
@@ -134,6 +136,59 @@ class IngestUrlRequest(BaseModel):
 @app.get("/api/system/model-status")
 async def get_system_model_status(x_gemini_api_key: Optional[str] = Header(None)):
     return get_model_status_payload(api_key=x_gemini_api_key, allow_network=True)
+
+@app.get("/api/system/gemini-live-check")
+async def gemini_live_health_check(x_gemini_api_key: Optional[str] = Header(None)):
+    """
+    Performs a real, minimal Gemini text-generation health check separately from video processing.
+    Directly distinguishes API key and model connectivity issues from media ingestion problems.
+    """
+    import time
+    from google.genai import types
+    key = x_gemini_api_key or get_api_key()
+    if not key or not key.strip():
+        return {
+            "status": "error",
+            "valid": False,
+            "error_type": "MISSING_KEY",
+            "message": "No Gemini API key is configured. Please provide an API key.",
+        }
+
+    start_time = time.time()
+    try:
+        active_model, selection_mode, _ = get_active_model_selection(api_key=key)
+        client = genai.Client(
+            api_key=key.strip(),
+            http_options=types.HttpOptions(timeout=15000)
+        )
+        response = await asyncio.to_thread(
+            client.models.generate_content,
+            model=active_model,
+            contents="Respond with only the single word 'HEALTHY'.",
+        )
+        resp_text = (getattr(response, "text", "") or "").strip()
+        elapsed = time.time() - start_time
+        return {
+            "status": "ok",
+            "valid": True,
+            "model": active_model,
+            "selection_mode": selection_mode,
+            "response": resp_text,
+            "latency_seconds": round(elapsed, 2),
+            "message": f"Successfully performed live text inference with {active_model} in {elapsed:.2f}s."
+        }
+    except Exception as e:
+        sanitized = sanitize_error_message(e)
+        elapsed = time.time() - start_time
+        err_lower = sanitized.lower()
+        err_type = "API_KEY_INVALID" if ("401" in sanitized or "unauthenticated" in err_lower or "api_key_invalid" in err_lower) else "INFERENCE_ERROR"
+        return {
+            "status": "error",
+            "valid": False,
+            "error_type": err_type,
+            "latency_seconds": round(elapsed, 2),
+            "message": sanitized,
+        }
 
 @app.post("/api/system/model-cache/refresh")
 async def refresh_model_cache(x_gemini_api_key: Optional[str] = Header(None)):
@@ -478,6 +533,7 @@ async def get_knowledge_graph(project_id: Optional[str] = None):
 # ----------------- Upload & Background Processing -----------------
 @app.post("/api/upload", response_model=MediaMetadata)
 async def upload_media(file: UploadFile = File(...)):
+    upload_start_time = time.time()
     file_id = str(uuid.uuid4())[:12]
     orig_name = file.filename or "media_file.mp4"
     suffix = Path(orig_name).suffix.lower()
@@ -485,6 +541,17 @@ async def upload_media(file: UploadFile = File(...)):
         suffix = ".mp4"
 
     save_path = UPLOAD_DIR / f"{file_id}{suffix}"
+
+    log_diagnostic(
+        event="UPLOAD_STARTED",
+        job_id=f"upl_{file_id}",
+        correlation_id=f"corr_{file_id[:8]}",
+        stage="UPLOADING",
+        elapsed_seconds=0.0,
+        status="INFO",
+        file_id=file_id,
+        details={"filename": orig_name}
+    )
 
     # Render Free Tier ephemeral disk guard: clean old files before receiving new upload
     cleanup_old_uploads(max_age_hours=2.0, max_dir_size_mb=200)
@@ -544,6 +611,19 @@ async def upload_media(file: UploadFile = File(...)):
         ))
         conn.commit()
 
+    upload_elapsed = time.time() - upload_start_time
+    log_diagnostic(
+        event="UPLOAD_COMPLETED",
+        job_id=f"upl_{file_id}",
+        correlation_id=f"corr_{file_id[:8]}",
+        stage="VALIDATING",
+        elapsed_seconds=upload_elapsed,
+        status="SUCCESS",
+        file_id=file_id,
+        file_size_bytes=file_size,
+        details={"duration_formatted": duration_fmt}
+    )
+
     return MediaMetadata(
         file_id=file_id,
         filename=orig_name,
@@ -593,20 +673,22 @@ async def start_processing(
         }
 
     job_id = str(uuid.uuid4())[:10]
+    correlation_id = str(uuid.uuid4())[:8]
 
     # Record job in database and update project status
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-        INSERT INTO processing_jobs (job_id, project_id, stage, progress_percent, message)
-        VALUES (?, ?, ?, ?, ?)
-        """, (job_id, file_id, "QUEUED", 5.0, "Job queued in VYORA background queue..."))
+        INSERT INTO processing_jobs (job_id, project_id, stage, progress_percent, message, correlation_id)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """, (job_id, file_id, "QUEUED", 5.0, "Job queued in VYORA background queue...", correlation_id))
         cursor.execute("UPDATE projects SET status = 'PROCESSING' WHERE id = ?", (file_id,))
         conn.commit()
 
     import time
     ACTIVE_JOBS[job_id] = {
         "job_id": job_id,
+        "correlation_id": correlation_id,
         "project_id": file_id,
         "stage": "QUEUED",
         "progress_percent": 5.0,
@@ -614,6 +696,16 @@ async def start_processing(
         "error_message": None,
         "updated_at": time.time(),
     }
+
+    log_diagnostic(
+        event="REQUEST_RECEIVED",
+        job_id=job_id,
+        correlation_id=correlation_id,
+        stage="QUEUED",
+        elapsed_seconds=0.0,
+        status="INFO",
+        file_id=file_id,
+    )
 
     # Dispatch background worker
     media_path = None
@@ -627,24 +719,38 @@ async def start_processing(
         job_id=job_id,
         project_id=file_id,
         file_path=media_path,
-        api_key=key
+        api_key=key,
+        correlation_id=correlation_id,
     )
 
-    return {"job_id": job_id, "project_id": file_id, "stage": "QUEUED"}
+    return {"job_id": job_id, "project_id": file_id, "stage": "QUEUED", "correlation_id": correlation_id}
 
 @app.get("/api/jobs/{job_id}")
 async def get_job_status(job_id: str):
     import time
     if job_id in ACTIVE_JOBS:
         job = ACTIVE_JOBS[job_id]
-        # Inactivity timeout guard (5 minutes)
-        if job.get("stage") not in ("COMPLETED", "FAILED") and (time.time() - job.get("updated_at", 0) > 300.0):
+        # Inactivity timeout guard (15 minutes for long multimodal video inference)
+        if job.get("stage") not in ("COMPLETED", "FAILED") and (time.time() - job.get("updated_at", 0) > 900.0):
+            corr_id = job.get("correlation_id", job_id[:8])
             update_job_status(
                 job_id,
                 "FAILED",
                 0.0,
-                "Processing timed out or stalled. Ready to retry.",
+                "Processing timed out after 15 minutes of inactivity. Ready to retry.",
                 error="Worker timeout exceeded",
+                correlation_id=corr_id,
+            )
+            log_diagnostic(
+                event="JOB_TIMEOUT",
+                job_id=job_id,
+                correlation_id=corr_id,
+                stage=job.get("stage", "UNKNOWN"),
+                elapsed_seconds=time.time() - job.get("updated_at", 0),
+                status="ERROR",
+                error_class="InactivityTimeoutError",
+                error_message="Worker timeout exceeded after 15 minutes",
+                file_id=job.get("project_id"),
             )
             del ACTIVE_JOBS[job_id]
         else:

@@ -15,6 +15,7 @@ from fastapi import HTTPException
 
 from app.config import DEFAULT_MODEL, DATA_CACHE_DIR, get_api_key
 from app.database import get_db
+from app.services.diagnostic_logger import log_diagnostic
 from app.services.model_discovery_service import (
     get_active_model_selection,
     blacklist_failed_model,
@@ -306,7 +307,13 @@ async def extract_media_knowledge(
     api_key: Optional[str] = None,
     on_stage: Optional[Callable[[str, float, str], None]] = None,
     selected_model_override: Optional[str] = None,
+    job_id: Optional[str] = None,
+    correlation_id: Optional[str] = None,
 ) -> MediaAnalysisResult:
+    ext_start_time = time.time()
+    jid = job_id or f"job_{file_id[:8]}"
+    cid = correlation_id or f"corr_{file_id[:8]}"
+
     # 1. Check cache first
     cached = get_cached_result(file_id)
     if cached:
@@ -354,9 +361,12 @@ async def extract_media_knowledge(
         is_video = mime_type.startswith("video/")
         media_display_name = media_path.name
 
-    # 4. Initialize Google GenAI client
+    # 4. Initialize Google GenAI client with explicit 10-minute HTTP timeout for large video understanding
     try:
-        client = genai.Client(api_key=resolved_key.strip())
+        client = genai.Client(
+            api_key=resolved_key.strip(),
+            http_options=types.HttpOptions(timeout=600000)
+        )
     except Exception as e:
         clean_err = sanitize_error_message(e)
         raise HTTPException(status_code=400, detail=f"Failed to initialize Gemini Client: {clean_err}")
@@ -432,6 +442,16 @@ async def extract_media_knowledge(
                 uploaded_content = uploaded_file
                 file_name = uploaded_file.name
                 FILE_REF_REGISTRY[file_id] = file_name
+                log_diagnostic(
+                    event="GEMINI_FILE_CREATED",
+                    job_id=jid,
+                    correlation_id=cid,
+                    stage="SENDING_TO_AI",
+                    elapsed_seconds=time.time() - ext_start_time,
+                    status="INFO",
+                    file_id=file_id,
+                    details={"gemini_file_name": file_name},
+                )
 
                 # Persist to database so subsequent retries reuse it across restarts
                 try:
@@ -476,6 +496,17 @@ async def extract_media_knowledge(
                 err_info = getattr(uploaded_file, 'error', 'Internal error')
                 raise HTTPException(status_code=500, detail=f"Gemini failed to process media: {err_info}")
 
+        log_diagnostic(
+            event="GEMINI_FILE_READY",
+            job_id=jid,
+            correlation_id=cid,
+            stage="SENDING_TO_AI",
+            elapsed_seconds=time.time() - ext_start_time,
+            status="INFO",
+            file_id=file_id,
+            details={"gemini_file_name": file_name},
+        )
+
     # 6. Resolve Model (Automatic Discovery or Configured)
     active_model = selected_model_override
     selection_mode = "automatic"
@@ -499,19 +530,63 @@ async def extract_media_knowledge(
             disp_name = format_model_display_name(active_model)
             on_stage("ANALYZING_VIDEO", 70.0, f"Analyzing video content with {disp_name}...")
 
+        log_diagnostic(
+            event="INFERENCE_STARTED",
+            job_id=jid,
+            correlation_id=cid,
+            stage="ANALYZING_VIDEO",
+            elapsed_seconds=time.time() - ext_start_time,
+            status="INFO",
+            model_id=active_model,
+            file_id=file_id,
+        )
+
+        heartbeat_cancelled = asyncio.Event()
+
+        async def _inference_heartbeat_worker():
+            h_start = time.time()
+            while not heartbeat_cancelled.is_set():
+                try:
+                    await asyncio.wait_for(heartbeat_cancelled.wait(), timeout=5.0)
+                    break
+                except asyncio.TimeoutError:
+                    pass
+                elapsed = int(time.time() - h_start)
+                if on_stage:
+                    disp_name = format_model_display_name(active_model)
+                    pct = min(70.0 + (elapsed / 300.0) * 14.0, 84.0)
+                    on_stage("ANALYZING_VIDEO", round(pct, 1), f"Analyzing video content with {disp_name} (elapsed: {elapsed}s)...")
+
+        heartbeat_task = asyncio.create_task(_inference_heartbeat_worker())
+
         try:
-            gen_config = types.GenerateContentConfig(
-                system_instruction=EXTRACTION_SYSTEM_PROMPT,
-                response_mime_type="application/json",
-                temperature=0.2,
-                max_output_tokens=8192,
-                safety_settings=STANDARD_SAFETY_SETTINGS,
-            )
-            response = await asyncio.to_thread(
-                client.models.generate_content,
-                model=active_model,
-                contents=[uploaded_content, prompt],
-                config=gen_config,
+            try:
+                gen_config = types.GenerateContentConfig(
+                    system_instruction=EXTRACTION_SYSTEM_PROMPT,
+                    response_mime_type="application/json",
+                    temperature=0.2,
+                    max_output_tokens=8192,
+                    safety_settings=STANDARD_SAFETY_SETTINGS,
+                )
+                response = await asyncio.to_thread(
+                    client.models.generate_content,
+                    model=active_model,
+                    contents=[uploaded_content, prompt],
+                    config=gen_config,
+                )
+            finally:
+                heartbeat_cancelled.set()
+                await heartbeat_task
+
+            log_diagnostic(
+                event="INFERENCE_COMPLETED",
+                job_id=jid,
+                correlation_id=cid,
+                stage="ANALYZING_VIDEO",
+                elapsed_seconds=time.time() - ext_start_time,
+                status="SUCCESS",
+                model_id=active_model,
+                file_id=file_id,
             )
 
             # Extract generated response text
@@ -585,6 +660,18 @@ async def extract_media_knowledge(
     try:
         raw_text = clean_json_text(resp_text)
         data = json.loads(raw_text)
+
+        log_diagnostic(
+            event="RESPONSE_PARSED",
+            job_id=jid,
+            correlation_id=cid,
+            stage="GENERATING_CHAPTERS",
+            elapsed_seconds=time.time() - ext_start_time,
+            status="SUCCESS",
+            model_id=active_model,
+            file_id=file_id,
+            details={"chapter_count": len(data.get("chapters", [])), "transcript_count": len(data.get("transcript", []))},
+        )
 
         # Ensure core fields are populated
         data["file_id"] = file_id
