@@ -92,7 +92,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="VYORA AI — Video & Media Knowledge Extractor API",
     description="Multimodal knowledge extraction, chapter segmentation, OCR, 3D spatial mapping, and Q&A powered by Google Gemini",
-    version="2.0.0",
+    version="2.1.0",
     lifespan=lifespan,
 )
 
