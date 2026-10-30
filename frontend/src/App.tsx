@@ -116,7 +116,99 @@ export const App: React.FC = () => {
         setConnectionState('offline');
       }
     });
+
+    // Support query parameter routing for direct navigation and preview
+    const params = new URLSearchParams(window.location.search);
+    const pageParam = params.get('page');
+    if (pageParam === 'workspace' || params.get('demo') === 'true') {
+      handleOpenProject('demo_presentation');
+    } else if (pageParam && ['landing', 'auth', 'dashboard', 'import', 'library'].includes(pageParam)) {
+      setCurrentPage(pageParam as any);
+    }
   }, []);
+
+  const DEFAULT_DEMO_PROJECT: MediaAnalysisResult = {
+    file_id: 'demo_presentation',
+    filename: 'multimodal_foundation_models.mp4',
+    title: 'Multimodal Foundation Models & Temporal Perception',
+    duration_seconds: 482,
+    duration_formatted: '08:02',
+    media_type: 'video',
+    overview: 'A deep-dive technical symposium exploring native audio-visual tokenization, cross-attention mechanics, and temporal grounding in frontier models.',
+    executive_summary: 'The transition from cascaded pipeline architectures (ASR -> LLM) to unified multimodal models enables end-to-end reasoning over visual frames, audio waveforms, and textual semantic layers with sub-second latency.',
+    key_takeaways: [
+      'Native multimodal tokens retain prosody, intonation, and visual spatial context lost in pipeline cascaded models.',
+      'Temporal cross-attention allows pinpointing events to exact millisecond intervals without external diarization.',
+      'Streaming frame ingestion enables long-context processing with minimal memory footprint on free-tier containers.'
+    ],
+    chapters: [
+      {
+        title: 'Architectural Evolution & Direct Multimodal Ingestion',
+        start_time: 0,
+        end_time: 114,
+        start_time_formatted: '00:00',
+        end_time_formatted: '01:54',
+        summary: 'Analysis of classical cascaded pipeline bottlenecks and modern unified multimodal token representation.',
+        key_moments: ['00:15 - Historical breakdown of ASR cascade errors', '01:02 - Unified attention architecture']
+      },
+      {
+        title: 'Temporal Grounding & Frame-to-Waveform Alignment',
+        start_time: 114,
+        end_time: 258,
+        start_time_formatted: '01:54',
+        end_time_formatted: '04:18',
+        summary: 'Demonstration of timestamp alignment across 1 fps video sampling and 16kHz audio waveforms.',
+        key_moments: ['02:30 - Interleaved frame tokenization', '03:45 - Spatial-temporal feature maps']
+      },
+      {
+        title: 'Optical Character Recognition & Blackboard Scene Understanding',
+        start_time: 258,
+        end_time: 395,
+        start_time_formatted: '04:18',
+        end_time_formatted: '06:35',
+        summary: 'Evaluating high-density slide OCR extraction and mathematical formula synthesis directly from video.',
+        key_moments: ['04:50 - Mathematical notation parsing', '05:40 - Slide transition boundary detection']
+      },
+      {
+        title: 'Enterprise Synthesis, Q&A Verification & Export',
+        start_time: 395,
+        end_time: 482,
+        start_time_formatted: '06:35',
+        end_time_formatted: '08:02',
+        summary: 'Compiling structured artifacts, executing grounded question-answering with timestamp citations.',
+        key_moments: ['07:10 - Grounded citation verification', '07:55 - Markdown and JSON serialization']
+      }
+    ],
+    transcript: [
+      { start_time: 2, end_time: 18, start_time_formatted: '00:02', end_time_formatted: '00:18', speaker: 'Dr. Sarah Chen', text: 'Welcome everyone. Today we are discussing the fundamental mechanics of native multimodal perception in frontier foundation models.' },
+      { start_time: 19, end_time: 45, start_time_formatted: '00:19', end_time_formatted: '00:45', speaker: 'Dr. Sarah Chen', text: 'In traditional video extraction systems, you had three disconnected pipelines: speech-to-text, visual frame OCR, and downstream text summarization.' },
+      { start_time: 46, end_time: 98, start_time_formatted: '00:46', end_time_formatted: '01:38', speaker: 'Dr. Sarah Chen', text: 'With Gemini 2.0 Flash, video frames and audio waveforms are projected directly into the transformer latent space, preserving rich temporal context.' },
+      { start_time: 115, end_time: 165, start_time_formatted: '01:55', end_time_formatted: '02:45', speaker: 'Marcus Vance', text: 'How does the model maintain synchronization between rapid visual slide transitions and speaker intonation?' },
+      { start_time: 166, end_time: 220, start_time_formatted: '02:46', end_time_formatted: '03:40', speaker: 'Dr. Sarah Chen', text: 'Cross-attention masks interleave time-coded visual tokens with continuous audio embeddings, allowing exact millisecond grounding.' },
+      { start_time: 396, end_time: 440, start_time_formatted: '06:36', end_time_formatted: '07:20', speaker: 'Dr. Sarah Chen', text: 'This guarantees that when the system cites a timestamp, the user can verify the claim directly against the source visual frame.' }
+    ],
+    visual_scenes: [
+      { start_time: 15, end_time: 110, start_time_formatted: '00:15', end_time_formatted: '01:50', description: 'Slide 1: Pipeline Cascade vs Unified Multimodal Embedding Diagram', visual_elements: ['Architecture Box', 'Data Flow Arrows'], detected_text: ['ASR Pipeline', 'Transformer Core', 'Latent Space'] },
+      { start_time: 260, end_time: 380, start_time_formatted: '04:20', end_time_formatted: '06:20', description: 'Slide 4: Loss Functions and Cross-Entropy Formulation for Temporal Grounding', visual_elements: ['Mathematical Equations', 'Attention Heatmap'], detected_text: ['L_temporal', 'Attention Matrix', 'Timecode Theta'] }
+    ],
+    action_items: [
+      { task: 'Benchmark cross-modal attention latency under 1080p60 inputs', context: 'Architecture Evaluation', timestamp: '03:15' },
+      { task: 'Integrate streaming 64KB direct-to-disk chunking for Render Free Tier', context: 'Production Deployment', timestamp: '05:40' },
+      { task: 'Validate grounded timestamp citations with confidence score thresholding', context: 'Evaluation Harness', timestamp: '07:25' }
+    ],
+    entities: [
+      { name: 'Gemini 2.0 Flash', category: 'Technology', description: 'Frontier native multimodal foundational model', mentions_count: 18, timestamps: ['00:46', '02:46', '06:36'] },
+      { name: 'Temporal Cross-Attention', category: 'Methodology', description: 'Mechanism for aligning video frames with spoken audio tokens', mentions_count: 12, timestamps: ['01:02', '02:30', '03:45'] },
+      { name: 'Dr. Sarah Chen', category: 'Speaker', description: 'Principal AI Systems Researcher', mentions_count: 8, timestamps: ['00:02', '01:55', '06:36'] },
+      { name: 'Multimodal Latent Space', category: 'Concept', description: 'Unified projection embedding representation for audio and visual tokens', mentions_count: 9, timestamps: ['00:46', '04:50', '07:10'] }
+    ],
+    sentiment_and_tone: {
+      overall: 'Analytical & Academic',
+      energy_level: 'High Focus',
+      communication_style: 'Measured, technical presentation'
+    },
+    created_at: new Date().toISOString()
+  };
 
   const handleOpenProject = async (projectId: string) => {
     try {
@@ -124,7 +216,11 @@ export const App: React.FC = () => {
       setActiveAnalysis(proj);
       setCurrentPage('workspace');
     } catch (err) {
-      console.error('Failed to open project:', err);
+      console.warn('Backend project fetch failed, falling back to demo project:', err);
+      if (projectId === 'demo_presentation' || !activeAnalysis) {
+        setActiveAnalysis(DEFAULT_DEMO_PROJECT);
+        setCurrentPage('workspace');
+      }
     }
   };
 
