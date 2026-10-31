@@ -211,6 +211,11 @@ export const App: React.FC = () => {
   };
 
   const handleOpenProject = async (projectId: string) => {
+    if (projectId === 'demo_presentation') {
+      setActiveAnalysis(DEFAULT_DEMO_PROJECT);
+      setCurrentPage('workspace');
+      return;
+    }
     try {
       const proj = await fetchProjectDetails(projectId);
       setActiveAnalysis(proj);
@@ -235,7 +240,7 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#030304] text-[#FAFAFA] flex flex-col font-sans selection:bg-violet-500/30 selection:text-violet-200">
+    <div className="min-h-screen bg-[#f1f1ef] text-neutral-950 flex flex-col font-sans selection:bg-neutral-900 selection:text-white">
       {/* 1. If on Landing or Auth, render full-screen immersive view */}
       {currentPage === 'landing' ? (
         <LandingPage
@@ -259,31 +264,29 @@ export const App: React.FC = () => {
         <div className="flex-1 flex overflow-hidden min-h-screen">
           {/* Collapsible Sidebar */}
           <aside
-            className={`transition-all duration-300 bg-[#07070A] border-r border-[#1A1A22] flex flex-col justify-between shrink-0 z-30 ${
+            className={`transition-all duration-300 bg-white border-r border-neutral-300 flex flex-col justify-between shrink-0 z-30 ${
               isSidebarCollapsed ? 'w-20' : 'w-64'
             }`}
           >
             {/* Top Brand Logo & Toggle */}
-            <div className="p-4 border-b border-[#1A1A22] flex items-center justify-between">
+            <div className="p-4 border-b border-neutral-200 flex items-center justify-between">
               <div
                 className="flex items-center gap-3 cursor-pointer overflow-hidden"
                 onClick={() => setCurrentPage('landing')}
               >
-                <div className="w-8 h-8 rounded-xl bg-[#14141B] border border-[#22222E] flex items-center justify-center shrink-0">
-                  <div className="w-3.5 h-3.5 rounded-full border border-violet-400 flex items-center justify-center">
-                    <div className="w-1 h-1 rounded-full bg-white" />
-                  </div>
+                <div className="w-7 h-7 rounded-sm bg-neutral-950 text-white flex items-center justify-center shrink-0 font-mono font-bold text-xs">
+                  V
                 </div>
                 {!isSidebarCollapsed && (
-                  <span className="font-semibold text-xs tracking-wider font-mono text-white whitespace-nowrap">
-                    VYORA<span className="text-violet-400">.AI</span>
+                  <span className="font-semibold text-xs tracking-wider font-mono text-neutral-950 whitespace-nowrap">
+                    VYORA<span className="text-neutral-500">.AI</span>
                   </span>
                 )}
               </div>
 
               <button
                 onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-                className="p-1.5 rounded-lg text-[#71717A] hover:text-white hover:bg-[#14141B] transition-colors"
+                className="p-1.5 rounded-sm text-neutral-500 hover:text-neutral-950 hover:bg-neutral-100 transition-colors"
                 title={isSidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
               >
                 {isSidebarCollapsed ? (
@@ -298,10 +301,10 @@ export const App: React.FC = () => {
             <div className="p-3 space-y-1 flex-1">
               <button
                 onClick={() => setCurrentPage('dashboard')}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-mono transition-all ${
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-sm text-xs font-mono transition-all ${
                   currentPage === 'dashboard'
-                    ? 'bg-white text-black font-semibold shadow-sm'
-                    : 'text-[#A1A1AA] hover:text-white hover:bg-[#111116]'
+                    ? 'bg-neutral-950 text-white font-medium shadow-sm'
+                    : 'text-neutral-600 hover:text-neutral-950 hover:bg-neutral-100'
                 }`}
                 title="Overview"
               >
@@ -311,10 +314,10 @@ export const App: React.FC = () => {
 
               <button
                 onClick={() => setCurrentPage('import')}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-mono transition-all ${
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-sm text-xs font-mono transition-all ${
                   currentPage === 'import'
-                    ? 'bg-white text-black font-semibold shadow-sm'
-                    : 'text-[#A1A1AA] hover:text-white hover:bg-[#111116]'
+                    ? 'bg-neutral-950 text-white font-medium shadow-sm'
+                    : 'text-neutral-600 hover:text-neutral-950 hover:bg-neutral-100'
                 }`}
                 title="Import Media"
               >
@@ -330,25 +333,25 @@ export const App: React.FC = () => {
                     handleLaunchDemo();
                   }
                 }}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-mono transition-all ${
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-sm text-xs font-mono transition-all ${
                   currentPage === 'workspace'
-                    ? 'bg-white text-black font-semibold shadow-sm'
-                    : 'text-[#A1A1AA] hover:text-white hover:bg-[#111116]'
+                    ? 'bg-neutral-950 text-white font-medium shadow-sm'
+                    : 'text-neutral-600 hover:text-neutral-950 hover:bg-neutral-100'
                 }`}
                 title="AI Studio Workspace"
               >
-                <Sparkles className="w-4 h-4 shrink-0 text-violet-400" />
+                <Sparkles className="w-4 h-4 shrink-0 text-current" />
                 {!isSidebarCollapsed && <span>AI STUDIO</span>}
               </button>
 
               <button
                 onClick={() => setCurrentPage('library')}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-mono transition-all ${
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-sm text-xs font-mono transition-all ${
                   currentPage === 'library'
-                    ? 'bg-white text-black font-semibold shadow-sm'
-                    : 'text-[#A1A1AA] hover:text-white hover:bg-[#111116]'
+                    ? 'bg-neutral-950 text-white font-medium shadow-sm'
+                    : 'text-neutral-600 hover:text-neutral-950 hover:bg-neutral-100'
                 }`}
-                title="Knowledge Library"
+                title="Knowledge Vault"
               >
                 <Layers className="w-4 h-4 shrink-0" />
                 {!isSidebarCollapsed && <span>KNOWLEDGE VAULT</span>}
@@ -356,10 +359,10 @@ export const App: React.FC = () => {
             </div>
 
             {/* Sidebar Bottom Controls */}
-            <div className="p-3 border-t border-[#1A1A22] space-y-1">
+            <div className="p-3 border-t border-neutral-200 space-y-1">
               <button
                 onClick={() => setIsSettingsOpen(true)}
-                className="w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-mono text-[#A1A1AA] hover:text-white hover:bg-[#111116] transition-colors"
+                className="w-full flex items-center gap-3 px-3.5 py-2 rounded-sm text-xs font-mono text-neutral-600 hover:text-neutral-950 hover:bg-neutral-100 transition-colors"
                 title="Settings & API Key"
               >
                 <Settings className="w-4 h-4 shrink-0" />
@@ -368,7 +371,7 @@ export const App: React.FC = () => {
 
               <button
                 onClick={() => setCurrentPage('landing')}
-                className="w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-mono text-[#A1A1AA] hover:text-white hover:bg-[#111116] transition-colors"
+                className="w-full flex items-center gap-3 px-3.5 py-2 rounded-sm text-xs font-mono text-neutral-600 hover:text-neutral-950 hover:bg-neutral-100 transition-colors"
                 title="Landing Portal"
               >
                 <Compass className="w-4 h-4 shrink-0" />
@@ -377,7 +380,7 @@ export const App: React.FC = () => {
 
               <button
                 onClick={handleSignOut}
-                className="w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-mono text-[#71717A] hover:text-rose-400 hover:bg-[#111116] transition-colors"
+                className="w-full flex items-center gap-3 px-3.5 py-2 rounded-sm text-xs font-mono text-neutral-600 hover:text-neutral-950 hover:bg-neutral-100 transition-colors"
                 title="Sign Out"
               >
                 <LogOut className="w-4 h-4 shrink-0" />
@@ -387,22 +390,22 @@ export const App: React.FC = () => {
           </aside>
 
           {/* Main App Canvas */}
-          <div className="flex-1 flex flex-col min-w-0 overflow-y-auto bg-[#030304]">
+          <div className="flex-1 flex flex-col min-w-0 overflow-y-auto bg-[#f1f1ef]">
             {/* Render Free Tier Cold-Start Indicator Banner */}
             {connectionState === 'waking_up' && (
-              <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 text-center text-xs text-amber-300 flex items-center justify-center gap-2">
-                <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-400 shrink-0" />
+              <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 text-center text-xs font-mono text-amber-900 flex items-center justify-center gap-2">
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-600 shrink-0" />
                 <span>
-                  <strong>Render Free Plan Cold Start:</strong> Backend container is waking up from sleep (~30–50s). Requests will connect automatically once booted.
+                  <strong>Render Cold Start:</strong> Backend container waking from sleep (~30–50s). Requests reconnect automatically.
                 </span>
               </div>
             )}
 
             {/* Top Workspace Header Bar */}
-            <header className="px-6 py-3 border-b border-[#1A1A22] bg-[#07070A]/80 backdrop-blur-md sticky top-0 z-20 flex items-center justify-between">
+            <header className="px-6 py-3 border-b border-neutral-300 bg-white/85 backdrop-blur-md sticky top-0 z-20 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <span className="text-[11px] font-mono text-[#71717A] uppercase tracking-wider">
-                  [ VYORA AI / <span className="text-white">{currentPage}</span> ]
+                <span className="text-[11px] font-mono text-neutral-500 uppercase tracking-wider">
+                  [ VYORA AI / <span className="text-neutral-950 font-medium">{currentPage}</span> ]
                 </span>
               </div>
 
@@ -410,9 +413,9 @@ export const App: React.FC = () => {
                 {activeAnalysis && currentPage === 'workspace' && (
                   <button
                     onClick={() => setIsExportOpen(true)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#14141B] hover:bg-[#1A1A24] border border-[#22222E] text-xs font-mono text-white transition-colors"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white hover:bg-neutral-50 border border-neutral-300 text-xs font-mono text-neutral-900 transition-colors"
                   >
-                    <FileText className="w-3.5 h-3.5 text-violet-400" />
+                    <FileText className="w-3.5 h-3.5 text-neutral-700" />
                     <span>EXPORT ARTIFACT</span>
                   </button>
                 )}
@@ -420,10 +423,10 @@ export const App: React.FC = () => {
                 {/* Dynamic Gemini Auto Model Status Pill */}
                 {connectionState === 'waking_up' ? (
                   <div
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-mono bg-amber-500/10 border-amber-500/30 text-amber-300 animate-pulse cursor-wait"
-                    title="Render Free Tier instance is spinning up (~30-50s)"
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-sm border text-xs font-mono bg-amber-50 border-amber-300 text-amber-900 animate-pulse cursor-wait"
+                    title="Render instance is spinning up (~30-50s)"
                   >
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-400" />
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-600" />
                     <span>Render Waking Up (~30s)</span>
                   </div>
                 ) : (
@@ -435,14 +438,10 @@ export const App: React.FC = () => {
                         setIsModelModalOpen(true);
                       }
                     }}
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-mono transition-all cursor-pointer ${
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-sm border text-xs font-mono transition-all cursor-pointer ${
                       connectionState === 'offline' || modelStatus?.status === 'offline'
-                        ? 'bg-rose-500/10 border-rose-500/30 text-rose-300'
-                        : serverKeyConfigured
-                        ? 'bg-[#14141B] border-[#22222E] text-[#D4D4D8] hover:border-violet-500/40'
-                        : hasApiKey
-                        ? 'bg-[#14141B] border-[#22222E] text-[#D4D4D8] hover:border-violet-500/40'
-                        : 'bg-amber-500/10 border-amber-500/30 text-amber-300 animate-pulse'
+                        ? 'bg-neutral-100 border-neutral-300 text-neutral-600'
+                        : 'bg-white border-neutral-300 text-neutral-900 hover:border-neutral-950'
                     }`}
                     title={
                       connectionState === 'offline' || modelStatus?.status === 'offline'
@@ -454,7 +453,7 @@ export const App: React.FC = () => {
                         : 'No Gemini API key detected. Click to configure in Settings.'
                     }
                   >
-                    <Cpu className="w-3.5 h-3.5 text-violet-400" />
+                    <Cpu className="w-3.5 h-3.5 text-neutral-700" />
                     <span>
                       {connectionState === 'offline' || modelStatus?.status === 'offline'
                         ? 'API Offline'
@@ -465,11 +464,11 @@ export const App: React.FC = () => {
                         : 'Configure API Key'}
                     </span>
                     {connectionState === 'offline' || modelStatus?.status === 'offline' ? (
-                      <AlertCircle className="w-3 h-3 text-rose-400" />
+                      <AlertCircle className="w-3 h-3 text-neutral-400" />
                     ) : hasApiKey ? (
-                      <CheckCircle className="w-3 h-3 text-emerald-400" />
+                      <CheckCircle className="w-3 h-3 text-emerald-600" />
                     ) : (
-                      <AlertCircle className="w-3 h-3 text-amber-400" />
+                      <AlertCircle className="w-3 h-3 text-amber-600" />
                     )}
                   </button>
                 )}

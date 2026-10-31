@@ -42,6 +42,9 @@ export const KnowledgeMap3D: React.FC<KnowledgeMap3DProps> = ({
     const container = containerRef.current;
     if (!container || !nodes.length) return;
 
+    let isVisible = true;
+    let animId: number;
+
     const width = container.clientWidth || 600;
     const height = container.clientHeight || 320;
 
@@ -51,7 +54,7 @@ export const KnowledgeMap3D: React.FC<KnowledgeMap3DProps> = ({
 
     const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
     renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 
     container.innerHTML = '';
     container.appendChild(renderer.domElement);
@@ -63,31 +66,27 @@ export const KnowledgeMap3D: React.FC<KnowledgeMap3DProps> = ({
     const nodePositionMap = new Map<string, THREE.Vector3>();
     const nodeMeshes: THREE.Mesh[] = [];
 
-    // Geometries & Materials
+    // Geometries & Materials (Monochrome system)
     const videoGeom = new THREE.IcosahedronGeometry(0.35, 1);
     const chapterGeom = new THREE.SphereGeometry(0.18, 16, 16);
     const conceptGeom = new THREE.OctahedronGeometry(0.14, 0);
 
     const videoMat = new THREE.MeshStandardMaterial({
-      color: 0x8b5cf6,
-      emissive: 0x8b5cf6,
-      emissiveIntensity: 0.5,
-      metalness: 0.8,
+      color: 0x0a0a0a,
+      metalness: 0.9,
       roughness: 0.2,
     });
 
     const chapterMat = new THREE.MeshStandardMaterial({
-      color: 0xd4d4d8,
-      emissive: 0x27272a,
-      emissiveIntensity: 0.3,
-      metalness: 0.7,
+      color: 0x525252,
+      metalness: 0.8,
       roughness: 0.3,
     });
 
     const conceptMat = new THREE.MeshStandardMaterial({
-      color: 0xa1a1aa,
-      metalness: 0.9,
-      roughness: 0.15,
+      color: 0xa3a3a3,
+      metalness: 0.85,
+      roughness: 0.2,
     });
 
     // Arrange nodes
@@ -129,9 +128,9 @@ export const KnowledgeMap3D: React.FC<KnowledgeMap3DProps> = ({
 
     // Draw Connecting Lines
     const lineMat = new THREE.LineBasicMaterial({
-      color: 0x3f3f46,
+      color: 0xd4d4d4,
       transparent: true,
-      opacity: 0.45,
+      opacity: 0.6,
     });
 
     links.forEach((link) => {
@@ -146,16 +145,12 @@ export const KnowledgeMap3D: React.FC<KnowledgeMap3DProps> = ({
     });
 
     // Ambient & Directional Lighting
-    const ambLight = new THREE.AmbientLight(0xffffff, 0.7);
+    const ambLight = new THREE.AmbientLight(0xffffff, 0.9);
     scene.add(ambLight);
 
-    const dirLight = new THREE.DirectionalLight(0xffffff, 1.8);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
     dirLight.position.set(5, 6, 5);
     scene.add(dirLight);
-
-    const violetPoint = new THREE.PointLight(0x8b5cf6, 2.5, 8);
-    violetPoint.position.set(0, 0, 0);
-    scene.add(violetPoint);
 
     // Raycaster
     const raycaster = new THREE.Raycaster();
@@ -204,21 +199,28 @@ export const KnowledgeMap3D: React.FC<KnowledgeMap3DProps> = ({
     container.addEventListener('mousemove', handlePointerMove);
     container.addEventListener('click', handleClick);
 
-    // Continuous Rotation
-    let animId: number;
+    const observer = new IntersectionObserver((entries) => {
+      isVisible = entries[0].isIntersecting;
+    });
+    observer.observe(container);
+
     const clock = new THREE.Clock();
 
     const animate = () => {
-      animId = requestAnimationFrame(animate);
-      const elapsed = clock.getElapsedTime();
+      if (!isVisible) {
+        animId = requestAnimationFrame(animate);
+        return;
+      }
 
-      mapGroup.rotation.y = elapsed * 0.08;
-      mapGroup.rotation.x = Math.sin(elapsed * 0.15) * 0.12;
+      const elapsed = clock.getElapsedTime();
+      mapGroup.rotation.y = elapsed * 0.06;
+      mapGroup.rotation.x = Math.sin(elapsed * 0.12) * 0.1;
 
       renderer.render(scene, camera);
+      animId = requestAnimationFrame(animate);
     };
 
-    animate();
+    animId = requestAnimationFrame(animate);
 
     const handleResize = () => {
       if (!container) return;
@@ -234,6 +236,7 @@ export const KnowledgeMap3D: React.FC<KnowledgeMap3DProps> = ({
 
     return () => {
       cancelAnimationFrame(animId);
+      observer.disconnect();
       resizeObserver.disconnect();
       container.removeEventListener('mousemove', handlePointerMove);
       container.removeEventListener('click', handleClick);
@@ -247,23 +250,23 @@ export const KnowledgeMap3D: React.FC<KnowledgeMap3DProps> = ({
   }, [nodes, links, onSelectNode]);
 
   return (
-    <div className={`relative bg-[#0d0d0d] border border-[#27272A] rounded-2xl overflow-hidden ${className}`}>
+    <div className={`relative bg-neutral-50/70 border border-neutral-300 rounded-sm overflow-hidden ${className}`}>
       <div className="absolute top-3 left-4 z-10 flex items-center justify-between w-[calc(100%-2rem)]">
         <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" />
-          <span className="text-xs font-mono tracking-wider uppercase text-zinc-300">
-            Interactive 3D Knowledge Map
+          <span className="w-1.5 h-1.5 rounded-full bg-neutral-950" />
+          <span className="text-xs font-mono tracking-wider uppercase text-neutral-950 font-semibold">
+            Concept topology graph
           </span>
         </div>
-        <div className="flex items-center gap-3 text-[10px] text-zinc-400 font-mono">
+        <div className="flex items-center gap-3 text-[10px] text-neutral-500 font-mono">
           <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-violet-500" /> Video
+            <span className="w-2 h-2 rounded-full bg-neutral-950" /> Video
           </span>
           <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-zinc-300" /> Chapters
+            <span className="w-2 h-2 rounded-full bg-neutral-600" /> Chapters
           </span>
           <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-zinc-500" /> Concepts
+            <span className="w-2 h-2 rounded-full bg-neutral-400" /> Concepts
           </span>
         </div>
       </div>
@@ -272,15 +275,15 @@ export const KnowledgeMap3D: React.FC<KnowledgeMap3DProps> = ({
 
       {hoveredNode && (
         <div
-          className="absolute z-20 pointer-events-none transform -translate-x-1/2 -translate-y-full mb-3 px-3.5 py-2 rounded-xl bg-[#151515] border border-violet-500/50 shadow-2xl text-zinc-200"
+          className="absolute z-20 pointer-events-none transform -translate-x-1/2 -translate-y-full mb-3 px-3 py-2 rounded-sm bg-white border border-neutral-300 shadow-md text-neutral-950"
           style={{ left: hoveredNode.x, top: hoveredNode.y - 12 }}
         >
-          <div className="text-[10px] font-mono uppercase tracking-wider text-violet-400 mb-0.5">
+          <div className="text-[10px] font-mono uppercase tracking-wider text-neutral-500 mb-0.5">
             {hoveredNode.type} {hoveredNode.category ? `• ${hoveredNode.category}` : ''}
           </div>
-          <div className="font-semibold text-xs text-white max-w-[220px]">{hoveredNode.label}</div>
+          <div className="font-semibold text-xs text-neutral-950 max-w-[220px]">{hoveredNode.label}</div>
           {hoveredNode.timestamp && (
-            <div className="text-[10px] font-mono text-zinc-400 mt-1">
+            <div className="text-[10px] font-mono text-neutral-500 mt-1">
               Timestamp: {hoveredNode.timestamp}
             </div>
           )}

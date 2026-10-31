@@ -6,6 +6,7 @@ import {
   FileCheck,
   AlertCircle,
   ArrowRight,
+  Terminal,
 } from 'lucide-react';
 import {
   uploadMedia,
@@ -43,13 +44,16 @@ export const ImportPage: React.FC<ImportPageProps> = ({
   const [systemConfig, setSystemConfig] = useState<SystemConfig | null>(null);
   const [cachedUploadedFile, setCachedUploadedFile] = useState<{ file: File; fileId: string } | null>(null);
 
+  // Live mono terminal logs during processing
+  const [terminalLogs, setTerminalLogs] = useState<Array<{ time: string; text: string; success?: boolean }>>([]);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     fetchSystemConfig().then(setSystemConfig).catch(() => {});
   }, []);
 
-  // Poll for background job progress (2.5s interval to minimize Render Free Tier worker load)
+  // Poll for background job progress
   useEffect(() => {
     if (!jobId || !isProcessing) return;
 
@@ -62,8 +66,21 @@ export const ImportPage: React.FC<ImportPageProps> = ({
         setProgressPercent(job.progress_percent);
         setStatusMessage(job.message || '');
 
+        // Add to terminal logs
+        const now = new Date();
+        const timeStr = `${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+        setTerminalLogs((prev) => {
+          const lastLog = prev[prev.length - 1];
+          if (lastLog && lastLog.text === job.message) return prev;
+          return [...prev.slice(-8), { time: timeStr, text: job.message || `${job.stage} (${job.progress_percent}%)` }];
+        });
+
         if (job.stage === 'COMPLETED') {
           clearInterval(interval);
+          setTerminalLogs((prev) => [
+            ...prev,
+            { time: timeStr, text: 'Knowledge extraction complete. Relocating to workspace...', success: true },
+          ]);
           setIsProcessing(false);
           setTimeout(() => {
             onProcessingFinished(job.project_id || projectId || 'demo_presentation');
@@ -75,7 +92,6 @@ export const ImportPage: React.FC<ImportPageProps> = ({
         }
       } catch (err: any) {
         consecutiveFailures++;
-        console.warn(`Job polling transient hiccup (${consecutiveFailures}/4):`, err);
         if (consecutiveFailures >= 4) {
           clearInterval(interval);
           setIsProcessing(false);
@@ -92,7 +108,11 @@ export const ImportPage: React.FC<ImportPageProps> = ({
     setIsProcessing(true);
     setStage('UPLOADING');
     setProgressPercent(10);
-    setStatusMessage('Checking Render backend readiness...');
+    setStatusMessage('Checking backend service readiness...');
+    setTerminalLogs([
+      { time: '00:01', text: 'Initializing VYORA background execution worker...' },
+      { time: '00:02', text: 'Resolving multimodal attention engine (Gemini 2.0 Flash)...' },
+    ]);
 
     try {
       const isReady = await probeBackendWithBackoff((_, __, msg) => setStatusMessage(msg), 3);
@@ -170,50 +190,50 @@ export const ImportPage: React.FC<ImportPageProps> = ({
   };
 
   return (
-    <div className="max-w-3xl mx-auto p-4 sm:p-6 space-y-6 animate-fade-in text-left">
+    <div className="max-w-3xl mx-auto p-4 sm:p-6 space-y-6 text-left">
       {/* Header */}
-      <div className="space-y-1.5 border-b border-[#1C1C24] pb-5">
-        <span className="text-[10px] font-mono tracking-widest text-[#71717A] uppercase">
-          MEDIA INGESTION & SYNTHESIS
+      <div className="space-y-1.5 border-b border-neutral-300 pb-5">
+        <span className="text-[10px] font-mono tracking-widest text-neutral-500 uppercase">
+          [ 01 / MEDIA INGESTION ]
         </span>
-        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white font-sans">
-          Import Video into VYORA
+        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-neutral-950 font-sans">
+          Import video into VYORA
         </h1>
-        <p className="text-xs text-[#71717A]">
+        <p className="text-xs text-neutral-500">
           Upload any lecture, conference talk, or meeting recording to extract source-grounded intelligence.
         </p>
       </div>
 
       {/* Main Studio Card */}
-      <div className="p-6 rounded-3xl bg-[#070709] border border-[#1A1A22] shadow-2xl space-y-6">
+      <div className="p-6 bg-white border border-neutral-300 rounded-sm space-y-6">
         {!isProcessing ? (
           <>
             {/* Mode Switcher */}
-            <div className="flex items-center justify-center">
-              <div className="inline-flex p-1 rounded-xl bg-[#0E0E14] border border-[#1F1F28] font-mono text-[11px]">
+            <div className="flex items-center justify-start border-b border-neutral-200 pb-4">
+              <div className="inline-flex p-0.5 rounded-sm bg-neutral-100 border border-neutral-300 font-mono text-xs">
                 <button
                   type="button"
                   onClick={() => setActiveMode('upload')}
-                  className={`flex items-center gap-2 px-5 py-2 rounded-lg font-semibold transition-all ${
+                  className={`flex items-center gap-2 px-4 py-1.5 rounded-sm font-medium transition-all ${
                     activeMode === 'upload'
-                      ? 'bg-white text-black shadow-md'
-                      : 'text-[#A1A1AA] hover:text-white'
+                      ? 'bg-neutral-950 text-white shadow-sm'
+                      : 'text-neutral-600 hover:text-neutral-950'
                   }`}
                 >
                   <Upload className="w-3.5 h-3.5" />
-                  <span>Upload File</span>
+                  <span>Upload file</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setActiveMode('url')}
-                  className={`flex items-center gap-2 px-5 py-2 rounded-lg font-semibold transition-all ${
+                  className={`flex items-center gap-2 px-4 py-1.5 rounded-sm font-medium transition-all ${
                     activeMode === 'url'
-                      ? 'bg-white text-black shadow-md'
-                      : 'text-[#A1A1AA] hover:text-white'
+                      ? 'bg-neutral-950 text-white shadow-sm'
+                      : 'text-neutral-600 hover:text-neutral-950'
                   }`}
                 >
                   <LinkIcon className="w-3.5 h-3.5" />
-                  <span>Video Link</span>
+                  <span>Video link</span>
                 </button>
               </div>
             </div>
@@ -225,12 +245,12 @@ export const ImportPage: React.FC<ImportPageProps> = ({
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
                 onClick={() => fileInputRef.current?.click()}
-                className={`border-2 border-dashed rounded-2xl p-8 sm:p-12 text-center cursor-pointer transition-all duration-200 ${
+                className={`border border-dashed rounded-sm p-8 sm:p-12 text-center cursor-pointer transition-all ${
                   isDragging
-                    ? 'border-violet-500 bg-violet-950/20'
+                    ? 'border-neutral-950 bg-neutral-100'
                     : selectedFile
-                    ? 'border-violet-500/50 bg-[#0A0A0F]'
-                    : 'border-[#1F1F28] hover:border-zinc-700 bg-[#050507]'
+                    ? 'border-neutral-950 bg-neutral-50'
+                    : 'border-neutral-300 hover:border-neutral-400 bg-neutral-50/40'
                 }`}
               >
                 <input
@@ -246,24 +266,24 @@ export const ImportPage: React.FC<ImportPageProps> = ({
                 />
 
                 <div className="flex flex-col items-center justify-center space-y-3">
-                  <div className="w-12 h-12 rounded-2xl bg-[#0E0E14] border border-[#202028] flex items-center justify-center text-violet-400">
-                    {selectedFile ? <FileCheck className="w-6 h-6 text-emerald-400" /> : <Upload className="w-6 h-6" />}
+                  <div className="w-10 h-10 rounded-sm bg-white border border-neutral-300 flex items-center justify-center text-neutral-800">
+                    {selectedFile ? <FileCheck className="w-5 h-5 text-neutral-950" /> : <Upload className="w-5 h-5" />}
                   </div>
 
                   {selectedFile ? (
                     <div className="space-y-1">
-                      <p className="text-xs font-bold text-white max-w-sm truncate">{selectedFile.name}</p>
-                      <p className="text-[11px] font-mono text-emerald-400">
-                        {formatFileSize(selectedFile.size)} · Ready for Extraction
+                      <p className="text-xs font-bold text-neutral-950 max-w-sm truncate">{selectedFile.name}</p>
+                      <p className="text-[11px] font-mono text-neutral-500">
+                        {formatFileSize(selectedFile.size)} · Ready for extraction
                       </p>
                     </div>
                   ) : (
                     <div className="space-y-1">
-                      <p className="text-xs font-semibold text-white">
-                        Click or drag video file to this area
+                      <p className="text-xs font-semibold text-neutral-950">
+                        Click or drag media file to this area
                       </p>
-                      <p className="text-[11px] text-[#52525B] font-mono">
-                        MP4, WebM, MOV, MKV, AVI, TS (Up to 500MB+)
+                      <p className="text-[11px] text-neutral-500 font-mono">
+                        MP4, WebM, MOV, MKV, AVI, TS (Up to 500 MB)
                       </p>
                     </div>
                   )}
@@ -271,51 +291,49 @@ export const ImportPage: React.FC<ImportPageProps> = ({
               </div>
             ) : (
               /* Mode 2: URL Ingestion */
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-[11px] font-mono text-[#A1A1AA] uppercase tracking-wider block">
-                    Public Video URL (YouTube, MP4 Stream)
-                  </label>
-                  <div className="relative flex items-center">
-                    <LinkIcon className="w-4 h-4 text-[#52525B] absolute left-3.5 pointer-events-none" />
-                    <input
-                      type="url"
-                      value={videoUrl}
-                      onChange={(e) => setVideoUrl(e.target.value)}
-                      placeholder="https://www.youtube.com/watch?v=..."
-                      className="w-full pl-10 pr-4 py-3 bg-[#050507] border border-[#1F1F28] rounded-xl text-xs text-white placeholder:text-[#52525B] focus:outline-none focus:border-violet-500 font-mono"
-                    />
-                  </div>
-                  <p className="text-[10px] text-[#52525B] font-mono">
-                    Direct public streams and YouTube videos are analyzed without downloading to local disk.
-                  </p>
+              <div className="space-y-3">
+                <label className="text-[11px] font-mono text-neutral-500 uppercase tracking-wider block">
+                  Public video URL (YouTube, MP4 Stream)
+                </label>
+                <div className="relative flex items-center">
+                  <LinkIcon className="w-4 h-4 text-neutral-400 absolute left-3.5 pointer-events-none" />
+                  <input
+                    type="url"
+                    value={videoUrl}
+                    onChange={(e) => setVideoUrl(e.target.value)}
+                    placeholder="https://www.youtube.com/watch?v=..."
+                    className="w-full pl-10 pr-4 py-2.5 bg-white border border-neutral-300 rounded-sm text-xs text-neutral-950 placeholder:text-neutral-400 focus:outline-none focus:border-neutral-950 font-mono"
+                  />
                 </div>
+                <p className="text-[10px] text-neutral-500 font-mono">
+                  Direct public media streams and YouTube URLs are verified with SSRF safety and ingested without disk buffering.
+                </p>
               </div>
             )}
 
             {/* Error Banner */}
             {errorMessage && (
-              <div className="p-4 rounded-xl bg-rose-950/20 border border-rose-500/30 flex items-center justify-between gap-3 text-xs text-rose-300">
+              <div className="p-3.5 rounded-sm bg-white border border-rose-300 flex items-center justify-between gap-3 text-xs text-rose-700">
                 <div className="flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
                   <span>{errorMessage}</span>
                 </div>
                 <button
                   type="button"
                   onClick={onOpenSettings}
-                  className="px-3 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 text-[11px] font-mono shrink-0 transition-colors"
+                  className="px-2.5 py-1 rounded-sm bg-rose-50 hover:bg-rose-100 text-rose-900 border border-rose-200 text-[11px] font-mono shrink-0 transition-colors"
                 >
-                  Configure Key
+                  Configure key
                 </button>
               </div>
             )}
 
             {/* Action Bar */}
-            <div className="flex items-center justify-between pt-2 border-t border-[#1C1C24]">
-              <span className="text-xs font-mono text-[#71717A]">
+            <div className="flex items-center justify-between pt-3 border-t border-neutral-200">
+              <span className="text-xs font-mono text-neutral-500">
                 AI Model Engine:{' '}
-                <span className="text-violet-400">
-                  Gemini Auto · {systemConfig?.display_model || 'Gemini 2.0 Flash'}
+                <span className="text-neutral-950 font-semibold">
+                  {systemConfig?.display_model || 'Gemini 2.0 Flash'}
                 </span>
               </span>
 
@@ -323,41 +341,69 @@ export const ImportPage: React.FC<ImportPageProps> = ({
                 type="button"
                 onClick={handleStartProcessing}
                 disabled={activeMode === 'upload' ? !selectedFile : !videoUrl.trim()}
-                className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-white text-black hover:bg-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed text-xs font-bold transition-all shadow-xl shadow-white/5"
+                className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-neutral-950 text-white hover:bg-neutral-800 disabled:opacity-30 disabled:cursor-not-allowed text-xs font-medium transition-all"
               >
-                <span>Extract Video Intelligence</span>
+                <span>Start extracting</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>
           </>
         ) : (
-          /* Live 3D Pipeline Visualization during actual processing */
-          <div className="py-6 space-y-6 text-center">
+          /* Live Mono Progress Log in Dark Terminal Panel */
+          <div className="dark-terminal bg-[#0a0a0a] text-white rounded-sm border border-neutral-800 p-6 space-y-6 font-mono text-left">
+            {/* Terminal Header */}
+            <div className="flex items-center justify-between border-b border-neutral-800 pb-3 text-xs">
+              <div className="flex items-center gap-2">
+                <Terminal className="w-4 h-4 text-neutral-400" />
+                <span className="font-semibold text-neutral-200 uppercase tracking-wider">
+                  EXECUTION WORKER · {jobId || 'RUNNING'}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-[11px] text-neutral-400">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span>ACTIVE</span>
+              </div>
+            </div>
+
             {/* 3D Core with Stage Adaptivity */}
-            <div className="w-full max-w-sm mx-auto h-64">
+            <div className="w-full max-w-sm mx-auto h-52">
               <ProcessingCore3D stage={stage} progressPercent={progressPercent} />
             </div>
 
             {/* Stage Indicator & Progress Bar */}
-            <div className="max-w-md mx-auto space-y-3">
-              <div className="flex items-center justify-between text-xs font-mono">
-                <span className="text-violet-400 font-semibold uppercase">{stage}</span>
-                <span className="text-[#A1A1AA]">{Math.round(progressPercent)}%</span>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-neutral-200 font-semibold uppercase">{stage}</span>
+                <span className="text-emerald-400 font-bold">{Math.round(progressPercent)}%</span>
               </div>
 
-              <div className="w-full h-1.5 rounded-full bg-[#121218] overflow-hidden border border-[#202028]">
+              <div className="w-full h-1.5 rounded-sm bg-neutral-900 overflow-hidden border border-neutral-800">
                 <div
-                  className="h-full bg-gradient-to-r from-violet-600 via-purple-500 to-emerald-400 transition-all duration-300"
+                  className="h-full bg-neutral-200 transition-all duration-300"
                   style={{ width: `${progressPercent}%` }}
                 />
               </div>
 
-              <p className="text-xs text-[#FAFAFA] font-medium pt-1 font-mono">
+              <p className="text-xs text-neutral-300 font-normal pt-1">
                 {statusMessage || 'Synthesizing knowledge layers...'}
               </p>
-              <p className="text-[10px] font-mono text-[#52525B]">
-                Gemini Auto ({systemConfig?.display_model || 'Gemini 2.0 Flash'}) is interleaving visual frames, waveforms, and OCR layers.
-              </p>
+            </div>
+
+            {/* Monospaced Log Output Terminal Window */}
+            <div className="bg-[#050505] border border-neutral-800 rounded-sm p-3.5 space-y-1.5 text-[11px] text-neutral-400 max-h-40 overflow-y-auto">
+              <div className="text-[10px] text-neutral-600 pb-1 border-b border-neutral-900 flex justify-between">
+                <span>SYSTEM LOG STREAM</span>
+                <span>{systemConfig?.display_model || 'Gemini 2.0 Flash'}</span>
+              </div>
+              {terminalLogs.map((log, i) => (
+                <div key={i} className="flex items-start gap-2.5 font-mono">
+                  <span className="text-neutral-600 shrink-0">[{log.time}]</span>
+                  <span className={log.success ? 'text-emerald-400' : 'text-neutral-300'}>
+                    {log.success && <span className="mr-1">✓</span>}
+                    {log.text}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -365,3 +411,4 @@ export const ImportPage: React.FC<ImportPageProps> = ({
     </div>
   );
 };
+export default ImportPage;

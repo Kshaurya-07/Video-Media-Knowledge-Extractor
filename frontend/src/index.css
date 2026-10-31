@@ -3,73 +3,86 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --bg-light: #f1f1ef;
+    --panel-white: #ffffff;
+    --border-hairline: #d4d4d4;
+    --text-primary: #0a0a0a;
+    --text-muted: #737373;
+    --text-subtle: #a3a3a3;
+    --surface-dark: #0a0a0a;
+  }
+
+  html {
+    background-color: var(--bg-light);
+    color: var(--text-primary);
+    font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
   body {
-    background-color: #030304;
-    color: #FAFAFA;
-    font-family: 'Geist', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background-color: var(--bg-light);
+    color: var(--text-primary);
     overflow-x: hidden;
+  }
+
+  /* Accessible focus indicators */
+  :focus-visible {
+    outline: 1.5px solid #0a0a0a;
+    outline-offset: 2px;
+  }
+
+  /* Support prefers-reduced-motion */
+  @media (prefers-reduced-motion: reduce) {
+    *, ::before, ::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }
 
-/* Technical grid background pattern inspired by ORDO */
-.bg-grid-pattern {
-  background-size: 32px 32px;
-  background-image: 
-    linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
-}
-
-.bg-dot-pattern {
+/* Hairline technical grid patterns */
+.grid-paper-light {
   background-size: 24px 24px;
-  background-image: radial-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 0);
+  background-image:
+    linear-gradient(to right, rgba(0, 0, 0, 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.04) 1px, transparent 1px);
 }
 
-/* Custom cinematic scrollbars */
+.grid-paper-dark {
+  background-size: 24px 24px;
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+}
+
+/* Minimalist scrollbars */
 ::-webkit-scrollbar {
   width: 4px;
   height: 4px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #030304;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #26262E;
-  border-radius: 9999px;
+  background: #d4d4d4;
+  border-radius: 2px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #8B5CF6;
+  background: #a3a3a3;
 }
 
-/* Restrained cinematic glows */
-.glow-subtle-violet {
-  box-shadow: 0 0 50px -10px rgba(139, 92, 246, 0.12);
+/* Dark mode scrollbars */
+.dark-terminal ::-webkit-scrollbar-thumb {
+  background: #262626;
 }
 
-.glow-border-violet {
-  border-color: rgba(139, 92, 246, 0.35);
-}
-
-/* Glass panel */
-.glass-panel {
-  background: rgba(10, 10, 14, 0.7);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-}
-
-/* Corner plus markers for technical grids */
-.corner-tick {
-  position: relative;
-}
-.corner-tick::before {
-  content: "+";
-  position: absolute;
-  top: -6px;
-  left: -5px;
-  font-family: monospace;
-  font-size: 10px;
-  color: #52525B;
+.dark-terminal ::-webkit-scrollbar-thumb:hover {
+  background: #404040;
 }

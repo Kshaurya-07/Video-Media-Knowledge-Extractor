@@ -22,24 +22,25 @@ interface ProcessingCore3DProps {
   stage: ProcessingStage;
   progressPercent: number;
   className?: string;
+  theme?: 'dark' | 'light';
 }
 
 const STAGE_CONFIG: Record<ProcessingStage, { color: number; speed: number; particleDensity: number }> = {
-  QUEUED: { color: 0x71717a, speed: 0.005, particleDensity: 100 },
-  UPLOADING: { color: 0x60a5fa, speed: 0.015, particleDensity: 250 },
-  VALIDATING: { color: 0x38bdf8, speed: 0.018, particleDensity: 280 },
-  EXTRACTING_MEDIA: { color: 0xa855f7, speed: 0.02, particleDensity: 320 },
-  SENDING_TO_AI: { color: 0x818cf8, speed: 0.022, particleDensity: 360 },
-  ANALYZING_VIDEO: { color: 0x8b5cf6, speed: 0.028, particleDensity: 420 },
-  GENERATING_CHAPTERS: { color: 0xc084fc, speed: 0.024, particleDensity: 380 },
-  SAVING_RESULTS: { color: 0x10b981, speed: 0.018, particleDensity: 300 },
-  EXTRACTING_AUDIO: { color: 0xa855f7, speed: 0.02, particleDensity: 300 },
-  TRANSCRIBING: { color: 0x8b5cf6, speed: 0.025, particleDensity: 400 },
-  IDENTIFYING_CHAPTERS: { color: 0xc084fc, speed: 0.02, particleDensity: 350 },
-  INDEXING: { color: 0xec4899, speed: 0.03, particleDensity: 450 },
-  FINALIZING: { color: 0x10b981, speed: 0.015, particleDensity: 300 },
-  COMPLETED: { color: 0x34d399, speed: 0.008, particleDensity: 200 },
-  FAILED: { color: 0xef4444, speed: 0.002, particleDensity: 100 },
+  QUEUED: { color: 0x737373, speed: 0.005, particleDensity: 120 },
+  UPLOADING: { color: 0xa3a3a3, speed: 0.015, particleDensity: 220 },
+  VALIDATING: { color: 0xd4d4d4, speed: 0.018, particleDensity: 260 },
+  EXTRACTING_MEDIA: { color: 0xe5e5e5, speed: 0.02, particleDensity: 300 },
+  SENDING_TO_AI: { color: 0xffffff, speed: 0.022, particleDensity: 340 },
+  ANALYZING_VIDEO: { color: 0xffffff, speed: 0.028, particleDensity: 400 },
+  GENERATING_CHAPTERS: { color: 0xe5e5e5, speed: 0.024, particleDensity: 360 },
+  SAVING_RESULTS: { color: 0x34d399, speed: 0.018, particleDensity: 280 },
+  EXTRACTING_AUDIO: { color: 0xd4d4d4, speed: 0.02, particleDensity: 280 },
+  TRANSCRIBING: { color: 0xffffff, speed: 0.025, particleDensity: 380 },
+  IDENTIFYING_CHAPTERS: { color: 0xe5e5e5, speed: 0.02, particleDensity: 320 },
+  INDEXING: { color: 0xffffff, speed: 0.03, particleDensity: 420 },
+  FINALIZING: { color: 0x34d399, speed: 0.015, particleDensity: 260 },
+  COMPLETED: { color: 0x34d399, speed: 0.008, particleDensity: 180 },
+  FAILED: { color: 0xf87171, speed: 0.003, particleDensity: 90 },
 };
 
 export const ProcessingCore3D: React.FC<ProcessingCore3DProps> = ({
@@ -53,6 +54,9 @@ export const ProcessingCore3D: React.FC<ProcessingCore3DProps> = ({
     const container = containerRef.current;
     if (!container) return;
 
+    let isVisible = true;
+    let animId: number;
+
     const width = container.clientWidth || 400;
     const height = container.clientHeight || 260;
 
@@ -62,32 +66,32 @@ export const ProcessingCore3D: React.FC<ProcessingCore3DProps> = ({
 
     const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
     renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 
     container.innerHTML = '';
     container.appendChild(renderer.domElement);
 
     const cfg = STAGE_CONFIG[stage] || STAGE_CONFIG.QUEUED;
 
-    // Center Core Mesh
+    // Center Core Octahedron
     const coreGeom = new THREE.OctahedronGeometry(0.7, 2);
     const coreMat = new THREE.MeshStandardMaterial({
-      color: 0x18181b,
-      roughness: 0.2,
-      metalness: 0.9,
+      color: 0x141414,
+      roughness: 0.25,
+      metalness: 0.85,
       emissive: cfg.color,
-      emissiveIntensity: 0.4,
+      emissiveIntensity: stage === 'COMPLETED' ? 0.6 : 0.25,
       wireframe: stage === 'TRANSCRIBING' || stage === 'INDEXING',
     });
     const core = new THREE.Mesh(coreGeom, coreMat);
     scene.add(core);
 
     // Orbital Ring
-    const ringGeom = new THREE.TorusGeometry(1.2, 0.02, 16, 80);
+    const ringGeom = new THREE.TorusGeometry(1.2, 0.015, 16, 80);
     const ringMat = new THREE.MeshBasicMaterial({
       color: cfg.color,
       transparent: true,
-      opacity: 0.7,
+      opacity: 0.6,
     });
     const ring = new THREE.Mesh(ringGeom, ringMat);
     ring.rotation.x = Math.PI / 3;
@@ -107,26 +111,34 @@ export const ProcessingCore3D: React.FC<ProcessingCore3DProps> = ({
     }
     pGeom.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
     const pMat = new THREE.PointsMaterial({
-      size: 0.03,
+      size: 0.026,
       color: cfg.color,
       transparent: true,
-      opacity: 0.8,
+      opacity: 0.75,
       blending: THREE.AdditiveBlending,
     });
     const particles = new THREE.Points(pGeom, pMat);
     scene.add(particles);
 
     // Lights
-    const amb = new THREE.AmbientLight(0xffffff, 0.5);
+    const amb = new THREE.AmbientLight(0xffffff, 0.7);
     scene.add(amb);
-    const point = new THREE.PointLight(cfg.color, 2.5, 6);
+    const point = new THREE.PointLight(cfg.color, 1.8, 6);
     scene.add(point);
 
-    let animId: number;
     const clock = new THREE.Clock();
 
+    const observer = new IntersectionObserver((entries) => {
+      isVisible = entries[0].isIntersecting;
+    });
+    observer.observe(container);
+
     const animate = () => {
-      animId = requestAnimationFrame(animate);
+      if (!isVisible) {
+        animId = requestAnimationFrame(animate);
+        return;
+      }
+
       const elapsed = clock.getElapsedTime();
 
       core.rotation.y += cfg.speed;
@@ -137,10 +149,11 @@ export const ProcessingCore3D: React.FC<ProcessingCore3DProps> = ({
 
       particles.rotation.y = elapsed * cfg.speed * 4;
 
-      const pulse = 1 + Math.sin(elapsed * 3) * (0.05 * (progressPercent / 100 + 0.2));
+      const pulse = 1 + Math.sin(elapsed * 3) * (0.04 * (progressPercent / 100 + 0.2));
       core.scale.set(pulse, pulse, pulse);
 
       renderer.render(scene, camera);
+      animId = requestAnimationFrame(animate);
     };
 
     animate();
@@ -159,6 +172,7 @@ export const ProcessingCore3D: React.FC<ProcessingCore3DProps> = ({
 
     return () => {
       cancelAnimationFrame(animId);
+      observer.disconnect();
       resizeObserver.disconnect();
       renderer.dispose();
       coreGeom.dispose();

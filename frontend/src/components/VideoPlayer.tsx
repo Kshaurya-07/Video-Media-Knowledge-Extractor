@@ -268,10 +268,10 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     return (
       <div
         ref={containerRef}
-        className="group relative bg-[#070709] border border-[#1F1F24] rounded-2xl overflow-hidden shadow-2xl flex flex-col justify-between"
+        className="group relative bg-neutral-950 border border-neutral-300 rounded-sm overflow-hidden flex flex-col justify-between"
       >
         {/* Media Frame */}
-        <div className="relative aspect-video w-full flex items-center justify-center bg-black/90 overflow-hidden">
+        <div className="relative aspect-video w-full flex items-center justify-center bg-black overflow-hidden">
           {youtubeId ? (
             <div className="relative w-full h-full">
               <iframe
@@ -288,9 +288,9 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                   href={`https://www.youtube.com/watch?v=${youtubeId}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/80 hover:bg-black text-[11px] font-mono text-[#A1A1AA] hover:text-white border border-[#26262E] shadow-md backdrop-blur-md transition-colors"
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-sm bg-neutral-950/90 hover:bg-black text-[11px] font-mono text-neutral-300 hover:text-white border border-neutral-700 backdrop-blur-md transition-colors"
                 >
-                  <ExternalLink className="w-3 h-3 text-violet-400" />
+                  <ExternalLink className="w-3 h-3 text-neutral-300" />
                   <span>Open YouTube</span>
                 </a>
               </div>
@@ -325,13 +325,13 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
               <button
                 type="button"
                 onClick={togglePlay}
-                className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto"
+                className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto"
               >
-                <div className="p-4 rounded-full bg-white/10 hover:bg-white/20 text-white border border-white/20 shadow-2xl backdrop-blur-md transform scale-95 group-hover:scale-100 transition-transform">
+                <div className="p-4 rounded-full bg-neutral-950/80 hover:bg-neutral-950 text-white border border-neutral-700 shadow-xl backdrop-blur-md transform scale-95 group-hover:scale-100 transition-transform">
                   {isPlaying ? (
-                    <Pause className="w-7 h-7" />
+                    <Pause className="w-6 h-6" />
                   ) : (
-                    <Play className="w-7 h-7 translate-x-0.5 fill-current" />
+                    <Play className="w-6 h-6 translate-x-0.5 fill-current" />
                   )}
                 </div>
               </button>
@@ -359,13 +359,13 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                 }}
                 onEnded={() => setIsPlaying(false)}
               />
-              <div className="w-16 h-16 rounded-2xl bg-[#111114] border border-[#26262E] flex items-center justify-center text-violet-400 shadow-inner">
-                <Music className="w-8 h-8" />
+              <div className="w-14 h-14 rounded-sm bg-neutral-900 border border-neutral-800 flex items-center justify-center text-neutral-300">
+                <Music className="w-6 h-6" />
               </div>
               <div>
-                <p className="text-xs font-bold text-white">{title || 'Audio Media'}</p>
-                <span className="text-[10px] font-mono text-[#71717A] uppercase tracking-wider">
-                  Acoustic Intelligence Stream
+                <p className="text-xs font-mono font-medium text-white">{title || 'Audio Media'}</p>
+                <span className="text-[10px] font-mono text-neutral-400 uppercase tracking-wider">
+                  Acoustic Audio Stream
                 </span>
               </div>
             </div>
@@ -373,10 +373,10 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         </div>
 
         {/* Video Player Controls Bar */}
-        <div className="p-3 bg-[#0A0A0E] border-t border-[#1F1F24] space-y-2">
+        <div className="p-3 bg-neutral-950 border-t border-neutral-800 space-y-2">
           {/* Progress Timeline Slider */}
           <div className="flex items-center gap-2.5">
-            <span className="text-[10px] font-mono text-[#A1A1AA] w-12 text-right">
+            <span className="text-[10px] font-mono text-neutral-400 w-12 text-right">
               {formatTimestamp(currentTime)}
             </span>
             <div className="relative flex-1 group/slider">
@@ -387,14 +387,14 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                 step={0.1}
                 value={currentTime}
                 onChange={handleSeek}
-                className="w-full h-1 bg-[#1A1A22] rounded-lg appearance-none cursor-pointer accent-violet-500 hover:h-1.5 transition-all"
+                className="w-full h-1 bg-neutral-800 rounded-sm appearance-none cursor-pointer accent-neutral-200 hover:h-1.5 transition-all"
               />
               <div
-                className="absolute top-0 left-0 h-1 bg-gradient-to-r from-violet-500 to-white rounded-lg pointer-events-none"
+                className="absolute top-0 left-0 h-1 bg-neutral-200 rounded-sm pointer-events-none"
                 style={{ width: `${(currentTime / (duration || 1)) * 100}%` }}
               />
             </div>
-            <span className="text-[10px] font-mono text-[#52525B] w-12">
+            <span className="text-[10px] font-mono text-neutral-500 w-12">
               {formatTimestamp(duration)}
             </span>
           </div>
@@ -405,7 +405,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
               <button
                 type="button"
                 onClick={togglePlay}
-                className="p-1.5 rounded-lg bg-white/10 hover:bg-white text-white hover:text-black border border-white/10 transition-colors"
+                className="p-1.5 rounded-sm bg-white hover:bg-neutral-200 text-neutral-950 transition-colors"
                 title={isPlaying ? 'Pause' : 'Play'}
               >
                 {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 fill-current" />}
@@ -414,7 +414,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
               <button
                 type="button"
                 onClick={() => skipTime(-5)}
-                className="p-1.5 rounded-lg hover:bg-[#14141A] text-[#A1A1AA] hover:text-white transition-colors"
+                className="p-1.5 rounded-sm hover:bg-neutral-900 text-neutral-400 hover:text-white transition-colors"
                 title="Rewind 5s"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
@@ -423,7 +423,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
               <button
                 type="button"
                 onClick={() => skipTime(5)}
-                className="p-1.5 rounded-lg hover:bg-[#14141A] text-[#A1A1AA] hover:text-white transition-colors"
+                className="p-1.5 rounded-sm hover:bg-neutral-900 text-neutral-400 hover:text-white transition-colors"
                 title="Forward 5s"
               >
                 <RotateCw className="w-3.5 h-3.5" />
@@ -434,7 +434,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                 <button
                   type="button"
                   onClick={toggleMute}
-                  className="p-1.5 rounded-lg hover:bg-[#14141A] text-[#A1A1AA] hover:text-white transition-colors"
+                  className="p-1.5 rounded-sm hover:bg-neutral-900 text-neutral-400 hover:text-white transition-colors"
                 >
                   {isMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
                 </button>
@@ -458,7 +458,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                       mediaRef.current.muted = val === 0;
                     }
                   }}
-                  className="w-14 h-1 bg-[#1A1A22] rounded-lg appearance-none cursor-pointer accent-violet-400"
+                  className="w-14 h-1 bg-neutral-800 rounded-sm appearance-none cursor-pointer accent-neutral-200"
                 />
               </div>
             </div>
@@ -467,7 +467,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
               <button
                 type="button"
                 onClick={cyclePlaybackRate}
-                className="px-2 py-0.5 rounded-md bg-[#111116] border border-[#26262E] hover:bg-[#181820] text-[10px] font-mono text-[#D4D4D8] transition-colors"
+                className="px-2 py-0.5 rounded-sm bg-neutral-900 border border-neutral-800 hover:bg-neutral-800 text-[10px] font-mono text-neutral-200 transition-colors"
                 title="Playback Speed"
               >
                 {playbackRate}x
@@ -476,7 +476,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
               <button
                 type="button"
                 onClick={toggleFullscreen}
-                className="p-1.5 rounded-lg hover:bg-[#14141A] text-[#A1A1AA] hover:text-white transition-colors"
+                className="p-1.5 rounded-sm hover:bg-neutral-900 text-neutral-400 hover:text-white transition-colors"
                 title="Fullscreen"
               >
                 <Maximize className="w-3.5 h-3.5" />

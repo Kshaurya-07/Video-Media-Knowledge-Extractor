@@ -8,23 +8,23 @@ export default {
   theme: {
     extend: {
       colors: {
-        vyora: {
-          bg: '#050505',
-          bgSecondary: '#0A0A0A',
-          elevated: '#111111',
-          card: '#151515',
-          border: '#27272A',
-          primary: '#FAFAFA',
-          secondary: '#A1A1AA',
-          muted: '#71717A',
-          silver: '#D4D4D8',
-          violet: '#8B5CF6',
-          white: '#EDEDED',
+        surface: {
+          light: '#f1f1ef',
+          panel: '#ffffff',
+          dark: '#0a0a0a',
+          darkPanel: '#121212',
         },
       },
       fontFamily: {
-        sans: ['Geist', 'Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
-        mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
+        sans: ['Geist', 'Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+        mono: ['Geist Mono', 'JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+      },
+      borderRadius: {
+        DEFAULT: '2px',
+        sm: '2px',
+        md: '4px',
+        lg: '6px',
+        pill: '9999px',
       },
     },
   },

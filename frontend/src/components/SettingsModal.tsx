@@ -26,7 +26,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const handleClearKey = () => {
     clearStoredApiKey();
     setApiKey('');
-    setStatusMessage({ type: 'success', text: 'Custom personal key removed. Reverting to server default.' });
+    setStatusMessage({ type: 'success', text: 'Custom key removed. Reverting to server default.' });
     if (onKeyCleared) onKeyCleared();
   };
 
@@ -42,7 +42,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       if (res.valid) {
         setStoredApiKey(apiKey.trim());
         onKeySaved(apiKey.trim());
-        setStatusMessage({ type: 'success', text: res.message || 'API Key verified and saved successfully!' });
+        setStatusMessage({ type: 'success', text: res.message || 'API Key verified and saved successfully.' });
         setTimeout(() => {
           onClose();
         }, 1200);
@@ -57,45 +57,47 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in text-left">
-      <div className="relative w-full max-w-md bg-[#0A0A0E] border border-[#202028] rounded-3xl p-6 shadow-2xl">
-        <div className="flex items-center justify-between pb-4 border-b border-[#1C1C24]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-950/40 backdrop-blur-sm animate-fade-in text-left">
+      <div className="relative w-full max-w-md bg-white border border-neutral-300 rounded-sm p-6 shadow-xl space-y-5">
+        {/* Header */}
+        <div className="flex items-center justify-between pb-3 border-b border-neutral-200">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-[#12121A] text-violet-400 border border-[#202028]">
+            <div className="p-1.5 rounded-sm bg-neutral-100 text-neutral-950 border border-neutral-200">
               <Key className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="font-bold text-white text-sm font-sans">Gemini API Credentials</h3>
-              <p className="text-[11px] text-[#71717A] font-mono">Multimodal Intelligence Engine</p>
+              <h3 className="font-bold text-neutral-950 text-sm font-sans">Gemini API credentials</h3>
+              <p className="text-[11px] text-neutral-500 font-mono">Multimodal Intelligence Engine</p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-xl text-[#71717A] hover:text-white hover:bg-[#14141C] transition-colors"
+            className="p-1 rounded-sm text-neutral-400 hover:text-neutral-950 hover:bg-neutral-100 transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="mt-5 space-y-4">
+        {/* Content */}
+        <div className="space-y-4">
           {/* Server Key Status Banner */}
           {serverKeyConfigured ? (
-            <div className="p-3.5 rounded-2xl bg-emerald-950/20 border border-emerald-500/30 text-emerald-300 text-xs flex items-start gap-2.5">
-              <ShieldCheck className="w-4 h-4 mt-0.5 shrink-0 text-emerald-400" />
+            <div className="p-3.5 rounded-sm bg-neutral-50 border border-neutral-300 text-neutral-800 text-xs flex items-start gap-2.5">
+              <ShieldCheck className="w-4 h-4 mt-0.5 shrink-0 text-emerald-600" />
               <div>
-                <p className="font-bold text-emerald-200">Server API Key Active</p>
-                <p className="text-emerald-300/80 mt-0.5 text-[11px] leading-relaxed">
+                <p className="font-semibold text-neutral-950">Server API key active</p>
+                <p className="text-neutral-600 mt-0.5 text-[11px] leading-relaxed">
                   A system-wide Google Gemini API Key is configured in backend environment variables. You can process media without entering a personal key.
                 </p>
               </div>
             </div>
           ) : (
-            <div className="p-3.5 rounded-2xl bg-amber-950/20 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-2.5">
-              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-amber-400" />
+            <div className="p-3.5 rounded-sm bg-neutral-50 border border-neutral-300 text-neutral-800 text-xs flex items-start gap-2.5">
+              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />
               <div>
-                <p className="font-bold text-amber-200">Personal Key Required</p>
-                <p className="text-amber-300/80 mt-0.5 text-[11px] leading-relaxed">
+                <p className="font-semibold text-neutral-950">Personal key required</p>
+                <p className="text-neutral-600 mt-0.5 text-[11px] leading-relaxed">
                   Enter your Google AI Studio key below to analyze videos and run grounded Q&A.
                 </p>
               </div>
@@ -104,49 +106,47 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-[11px] font-mono text-[#A1A1AA] uppercase tracking-wider">
-                {serverKeyConfigured ? 'Custom Key (Optional Override)' : 'Google AI Studio Key'}
+              <label className="block text-[11px] font-mono text-neutral-500 uppercase tracking-wider">
+                {serverKeyConfigured ? 'Custom key (optional override)' : 'Google AI Studio key'}
               </label>
               {apiKey && (
                 <button
                   type="button"
                   onClick={handleClearKey}
-                  className="text-[10px] font-mono text-red-400 hover:text-red-300 flex items-center gap-1"
+                  className="text-[10px] font-mono text-rose-600 hover:underline flex items-center gap-1"
                 >
                   <Trash2 className="w-3 h-3" />
-                  <span>Clear Key</span>
+                  <span>Clear key</span>
                 </button>
               )}
             </div>
-            <div className="relative">
-              <input
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder={serverKeyConfigured ? 'Optional override (AIzaSy...)' : 'AIzaSy...'}
-                className="w-full px-3.5 py-2.5 bg-[#050508] border border-[#202028] rounded-xl text-white placeholder:text-[#52525B] text-xs focus:outline-none focus:border-violet-500 font-mono"
-              />
-            </div>
+            <input
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder={serverKeyConfigured ? 'Optional override (AIzaSy...)' : 'AIzaSy...'}
+              className="w-full px-3 py-2 bg-white border border-neutral-300 rounded-sm text-neutral-950 placeholder:text-neutral-400 text-xs focus:outline-none focus:border-neutral-950 font-mono"
+            />
           </div>
 
           {statusMessage && (
             <div
-              className={`p-3 rounded-xl text-xs flex items-start gap-2 ${
+              className={`p-3 rounded-sm text-xs flex items-start gap-2 ${
                 statusMessage.type === 'success'
-                  ? 'bg-emerald-950/20 border border-emerald-500/30 text-emerald-300'
-                  : 'bg-red-950/20 border border-red-500/30 text-red-300'
+                  ? 'bg-neutral-50 border border-neutral-300 text-neutral-800'
+                  : 'bg-rose-50 border border-rose-300 text-rose-800'
               }`}
             >
               {statusMessage.type === 'success' ? (
-                <Check className="w-4 h-4 mt-0.5 shrink-0" />
+                <Check className="w-4 h-4 mt-0.5 shrink-0 text-emerald-600" />
               ) : (
-                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-rose-600" />
               )}
               <span className="font-mono text-[11px]">{statusMessage.text}</span>
             </div>
           )}
 
-          <div className="bg-[#050508] border border-[#1A1A22] rounded-2xl p-3.5 text-xs text-[#71717A] space-y-2">
+          <div className="bg-neutral-50 border border-neutral-200 rounded-sm p-3 text-xs text-neutral-600 space-y-1.5">
             <p className="leading-relaxed">
               Your key is transmitted over TLS to authenticate with Google Gemini Developer API.
             </p>
@@ -154,26 +154,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               href="https://aistudio.google.com/app/apikey"
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1.5 text-violet-400 hover:text-violet-300 font-mono text-[11px]"
+              className="inline-flex items-center gap-1.5 text-neutral-950 font-mono text-[11px] hover:underline"
             >
               <span>Get a free key from Google AI Studio</span>
               <ExternalLink className="w-3 h-3" />
             </a>
           </div>
 
-          <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-[#1C1C24]">
+          <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-neutral-200">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl text-xs font-mono text-[#71717A] hover:text-white hover:bg-[#121218] transition-colors"
+              className="px-3.5 py-1.5 rounded-sm text-xs font-mono text-neutral-600 hover:text-neutral-950 transition-colors"
             >
-              Close
+              Cancel
             </button>
             <button
               type="button"
               onClick={handleVerifyAndSave}
               disabled={isVerifying || !apiKey.trim()}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-white text-black hover:bg-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed shadow-lg transition-all"
+              className="flex items-center gap-2 px-4 py-1.5 rounded-sm text-xs font-medium bg-neutral-950 text-white hover:bg-neutral-800 disabled:opacity-30 disabled:cursor-not-allowed transition-all font-mono"
             >
               {isVerifying ? (
                 <>
@@ -183,7 +183,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               ) : (
                 <>
                   <Check className="w-3.5 h-3.5" />
-                  <span>Save & Connect</span>
+                  <span>Save credentials</span>
                 </>
               )}
             </button>
@@ -193,3 +193,4 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     </div>
   );
 };
+export default SettingsModal;

@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { ModelStatusResponse, refreshModelCache } from '../lib/api';
 import {
   X,
-  Sparkles,
   RefreshCw,
   CheckCircle,
   AlertCircle,
@@ -48,22 +47,22 @@ export const ModelStatusModal: React.FC<ModelStatusModalProps> = ({
   const isFallback = modelStatus?.selection_mode === 'fallback';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in text-left">
-      <div className="w-full max-w-lg bg-[#0A0A0E] border border-[#202028] rounded-3xl shadow-2xl overflow-hidden flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-950/40 backdrop-blur-sm animate-fade-in text-left">
+      <div className="w-full max-w-lg bg-white border border-neutral-300 rounded-sm shadow-xl overflow-hidden flex flex-col space-y-4">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-[#1C1C24] flex items-center justify-between bg-[#08080C]">
+        <div className="px-6 py-4 border-b border-neutral-200 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-[#12121A] border border-[#202028] text-violet-400">
+            <div className="p-1.5 rounded-sm bg-neutral-100 border border-neutral-200 text-neutral-950">
               <Cpu className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-white flex items-center gap-2 font-sans">
-                <span>Model Intelligence & Discovery</span>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-300 border border-violet-500/20">
-                  {isFallback ? 'Fallback Active' : isAutomatic ? 'Auto Selection' : 'Override'}
+              <h3 className="text-sm font-bold text-neutral-950 flex items-center gap-2 font-sans">
+                <span>Model intelligence & discovery</span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-sm bg-neutral-100 text-neutral-700 border border-neutral-200">
+                  {isFallback ? 'Fallback active' : isAutomatic ? 'Auto selection' : 'Override'}
                 </span>
               </h3>
-              <p className="text-[11px] text-[#71717A] font-mono">
+              <p className="text-[11px] text-neutral-500 font-mono">
                 Multimodal capability detection and automatic failover
               </p>
             </div>
@@ -71,59 +70,53 @@ export const ModelStatusModal: React.FC<ModelStatusModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-xl text-[#71717A] hover:text-white hover:bg-[#14141C] transition-colors"
+            className="p-1 rounded-sm text-neutral-400 hover:text-neutral-950 hover:bg-neutral-100 transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Content Body */}
-        <div className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+        <div className="px-6 space-y-4 max-h-[70vh] overflow-y-auto">
           {errorMsg && (
-            <div className="p-3 rounded-xl bg-rose-950/20 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2 font-mono">
-              <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+            <div className="p-3 rounded-sm bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2 font-mono">
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
               <span>{errorMsg}</span>
             </div>
           )}
 
           {/* Active Model Card */}
-          <div className="p-4 rounded-2xl bg-[#060608] border border-[#1A1A22] space-y-3">
+          <div className="p-4 rounded-sm bg-neutral-50 border border-neutral-300 space-y-3">
             <div className="flex items-start justify-between">
               <div>
-                <span className="text-[10px] font-mono uppercase tracking-wider text-[#52525B] block">
-                  Active Selected Model
+                <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-500 block">
+                  Active selected model
                 </span>
-                <div className="text-base font-bold text-white mt-0.5 flex items-center gap-2">
+                <div className="text-base font-bold text-neutral-950 mt-0.5 flex items-center gap-2">
                   <span>{modelStatus?.display_model || 'Gemini 2.0 Flash'}</span>
                   {isConnected ? (
-                    <CheckCircle className="w-4 h-4 text-emerald-400" />
+                    <CheckCircle className="w-4 h-4 text-emerald-600" />
                   ) : (
-                    <AlertCircle className="w-4 h-4 text-amber-400" />
+                    <AlertCircle className="w-4 h-4 text-amber-600" />
                   )}
                 </div>
-                <span className="text-xs font-mono text-violet-400">
+                <span className="text-xs font-mono text-neutral-600">
                   {modelStatus?.selected_model || modelStatus?.configured_model || 'gemini-2.0-flash'}
                 </span>
               </div>
 
-              <div
-                className={`px-2.5 py-1 rounded-full text-[10px] font-mono border ${
-                  isConnected
-                    ? 'bg-emerald-950/30 border-emerald-500/30 text-emerald-300'
-                    : 'bg-amber-950/30 border-amber-500/30 text-amber-300'
-                }`}
-              >
+              <div className="px-2.5 py-1 rounded-sm text-[10px] font-mono border bg-white border-neutral-300 text-neutral-800">
                 {modelStatus?.status === 'connected'
-                  ? 'Verified Active'
+                  ? 'Verified active'
                   : modelStatus?.status === 'configured'
                   ? 'Configured'
                   : modelStatus?.status === 'pending_key'
-                  ? 'Key Required'
+                  ? 'Key required'
                   : 'Offline'}
               </div>
             </div>
 
-            <div className="text-xs text-[#71717A] leading-relaxed border-t border-[#14141C] pt-2.5 font-mono text-[11px]">
+            <div className="text-xs text-neutral-600 leading-relaxed border-t border-neutral-200 pt-2 font-mono text-[11px]">
               {modelStatus?.message ||
                 'Automatically discovered and verified via Google Gemini API model listing.'}
             </div>
@@ -131,26 +124,26 @@ export const ModelStatusModal: React.FC<ModelStatusModalProps> = ({
 
           {/* Selection Policy Details */}
           <div className="grid grid-cols-2 gap-2.5 text-left">
-            <div className="p-3 rounded-2xl bg-[#060608] border border-[#1A1A22]">
-              <span className="text-[10px] font-mono uppercase text-[#52525B] flex items-center gap-1.5">
-                <Zap className="w-3 h-3 text-amber-400" /> Policy
+            <div className="p-3 rounded-sm bg-neutral-50 border border-neutral-200">
+              <span className="text-[10px] font-mono uppercase text-neutral-500 flex items-center gap-1.5">
+                <Zap className="w-3 h-3 text-neutral-950" /> Policy
               </span>
-              <span className="text-xs font-bold text-white mt-1 block">
-                Multimodal & Speed
+              <span className="text-xs font-bold text-neutral-950 mt-1 block">
+                Multimodal & speed
               </span>
-              <span className="text-[10px] text-[#71717A] font-mono block mt-0.5">
+              <span className="text-[10px] text-neutral-500 font-mono block mt-0.5">
                 Favors 1M context Flash models
               </span>
             </div>
 
-            <div className="p-3 rounded-2xl bg-[#060608] border border-[#1A1A22]">
-              <span className="text-[10px] font-mono uppercase text-[#52525B] flex items-center gap-1.5">
-                <ShieldCheck className="w-3 h-3 text-emerald-400" /> Protection
+            <div className="p-3 rounded-sm bg-neutral-50 border border-neutral-200">
+              <span className="text-[10px] font-mono uppercase text-neutral-500 flex items-center gap-1.5">
+                <ShieldCheck className="w-3 h-3 text-neutral-950" /> Protection
               </span>
-              <span className="text-xs font-bold text-white mt-1 block">
-                Intelligent Failover
+              <span className="text-xs font-bold text-neutral-950 mt-1 block">
+                Intelligent failover
               </span>
-              <span className="text-[10px] text-[#71717A] font-mono block mt-0.5">
+              <span className="text-[10px] text-neutral-500 font-mono block mt-0.5">
                 Blacklists 503 / 404 models
               </span>
             </div>
@@ -159,8 +152,8 @@ export const ModelStatusModal: React.FC<ModelStatusModalProps> = ({
           {/* Candidate Models Pool */}
           {modelStatus?.candidate_models && modelStatus.candidate_models.length > 0 && (
             <div className="space-y-2 text-left">
-              <span className="text-[10px] font-mono uppercase tracking-wider text-[#52525B] flex items-center gap-1.5">
-                <Layers className="w-3 h-3 text-violet-400" /> Compatible Models (
+              <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-500 flex items-center gap-1.5">
+                <Layers className="w-3 h-3 text-neutral-950" /> Compatible models (
                 {modelStatus.candidate_models.length})
               </span>
               <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
@@ -170,30 +163,23 @@ export const ModelStatusModal: React.FC<ModelStatusModalProps> = ({
                   return (
                     <div
                       key={c.model_id}
-                      className={`px-3 py-2 rounded-xl text-xs flex items-center justify-between border transition-colors ${
+                      className={`px-3 py-2 rounded-sm text-xs flex items-center justify-between border transition-colors ${
                         isCurrent
-                          ? 'bg-violet-950/20 border-violet-500/30 text-white font-medium'
-                          : 'bg-[#060608] border-[#1A1A22] text-[#71717A]'
+                          ? 'bg-neutral-100 border-neutral-950 text-neutral-950 font-medium'
+                          : 'bg-white border-neutral-200 text-neutral-600'
                       }`}
                     >
                       <div className="flex items-center gap-2">
-                        {isCurrent && <Sparkles className="w-3 h-3 text-violet-400" />}
                         <span>{c.display_name}</span>
-                        <span className="font-mono text-[10px] text-[#52525B]">({c.model_id})</span>
+                        <span className="font-mono text-[10px] text-neutral-400">({c.model_id})</span>
                       </div>
                       <div className="flex items-center gap-2">
                         {c.input_token_limit && c.input_token_limit > 0 ? (
-                          <span className="text-[10px] font-mono text-[#52525B]">
+                          <span className="text-[10px] font-mono text-neutral-400">
                             {Math.round(c.input_token_limit / 1000)}k tokens
                           </span>
                         ) : null}
-                        <span
-                          className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
-                            isCurrent
-                              ? 'bg-violet-500/20 text-violet-300'
-                              : 'bg-[#14141C] text-[#52525B]'
-                          }`}
-                        >
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-sm bg-neutral-100 border border-neutral-200 text-neutral-700">
                           Score: {c.tier_score}
                         </span>
                       </div>
@@ -206,7 +192,7 @@ export const ModelStatusModal: React.FC<ModelStatusModalProps> = ({
 
           {/* Metadata Footer */}
           {modelStatus?.last_checked && (
-            <div className="text-[10px] font-mono text-[#52525B] pt-1">
+            <div className="text-[10px] font-mono text-neutral-400 pt-1">
               Last discovery check:{' '}
               {new Date(modelStatus.last_checked).toLocaleTimeString([], {
                 hour: '2-digit',
@@ -218,21 +204,21 @@ export const ModelStatusModal: React.FC<ModelStatusModalProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="px-6 py-3.5 border-t border-[#1C1C24] flex items-center justify-between bg-[#08080C]">
+        <div className="px-6 py-3.5 border-t border-neutral-200 flex items-center justify-between">
           <button
             type="button"
             onClick={handleRefresh}
             disabled={isRefreshing}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#12121A] hover:bg-[#1A1A24] border border-[#202028] text-xs font-mono text-[#D4D4D8] transition-colors disabled:opacity-50"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-sm bg-neutral-100 hover:bg-neutral-200 border border-neutral-300 text-xs font-mono text-neutral-800 transition-colors disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
-            <span>{isRefreshing ? 'Discovering...' : 'Refresh Models'}</span>
+            <span>{isRefreshing ? 'Discovering...' : 'Refresh models'}</span>
           </button>
 
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-1.5 rounded-xl bg-white text-black hover:bg-zinc-200 text-xs font-bold transition-colors"
+            className="px-4 py-1.5 rounded-sm bg-neutral-950 text-white hover:bg-neutral-800 text-xs font-medium font-mono transition-colors"
           >
             Close
           </button>
@@ -241,3 +227,4 @@ export const ModelStatusModal: React.FC<ModelStatusModalProps> = ({
     </div>
   );
 };
+export default ModelStatusModal;

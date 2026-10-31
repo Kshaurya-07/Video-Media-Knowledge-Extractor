@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { MediaAnalysisResult, Note, Bookmark } from '../../lib/types';
 import { VideoPlayer, VideoPlayerHandle, formatTimestamp, parseTimestamp } from '../VideoPlayer';
 import { SpatialTimeline3D } from '../3d/SpatialTimeline3D';
+import { KnowledgeMap3D, KnowledgeGraphNode, KnowledgeGraphLink } from '../3d/KnowledgeMap3D';
 import {
   fetchNotes,
   createNote,
@@ -9,14 +10,13 @@ import {
   createBookmark,
   askMediaQuestion,
   getMediaStreamUrl,
+  fetchKnowledgeGraph,
 } from '../../lib/api';
 import {
   Play,
   Search,
   Bookmark as BookmarkIcon,
   Plus,
-  Send,
-  CheckCircle2,
   ArrowLeft,
 } from 'lucide-react';
 
@@ -36,12 +36,9 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
   const [currentTime, setCurrentTime] = useState(0);
   const playerRef = useRef<VideoPlayerHandle>(null);
 
-  // Left column active subtab
-  const [leftTab, setLeftTab] = useState<'chapters' | 'transcript' | 'entities'>('chapters');
+  // Active underlined text tab: Chapters | Transcript | Q&A | Map | Notes
+  const [activeTab, setActiveTab] = useState<'chapters' | 'transcript' | 'qa' | 'map' | 'notes'>('chapters');
   const [transcriptSearch, setTranscriptSearch] = useState('');
-
-  // Right column active subtab
-  const [rightTab, setRightTab] = useState<'chat' | 'notes' | 'bookmarks'>('chat');
 
   // Notes and Bookmarks
   const [notes, setNotes] = useState<Note[]>([]);
@@ -49,6 +46,12 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
   const [newNoteTitle, setNewNoteTitle] = useState('');
   const [newNoteContent, setNewNoteContent] = useState('');
   const [isAddingNote, setIsAddingNote] = useState(false);
+
+  // 3D Knowledge Graph
+  const [graphData, setGraphData] = useState<{ nodes: KnowledgeGraphNode[]; links: KnowledgeGraphLink[] }>({
+    nodes: [],
+    links: [],
+  });
 
   // Chat state
   const [chatMessages, setChatMessages] = useState<
@@ -66,15 +69,18 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
   const [isChatLoading, setIsChatLoading] = useState(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
-  // Load notes and bookmarks
+  // Load notes, bookmarks, and graph
   useEffect(() => {
     fetchNotes(analysis.file_id).then(setNotes).catch(() => {});
     fetchBookmarks(analysis.file_id).then(setBookmarks).catch(() => {});
+    fetchKnowledgeGraph().then(setGraphData).catch(() => {});
   }, [analysis.file_id]);
 
   useEffect(() => {
-    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatMessages, isChatLoading]);
+    if (activeTab === 'qa') {
+      chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [chatMessages, isChatLoading, activeTab]);
 
   // Synchronized seek handler
   const handleSeek = (seconds: number) => {
@@ -173,34 +179,40 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
       )
     : analysis.transcript;
 
+  const tabs = [
+    { id: 'chapters' as const, label: `Chapters (${analysis.chapters.length})` },
+    { id: 'transcript' as const, label: `Transcript (${analysis.transcript.length})` },
+    { id: 'qa' as const, label: 'Q&A' },
+    { id: 'map' as const, label: '3D Map' },
+    { id: 'notes' as const, label: `Notes (${notes.length + bookmarks.length})` },
+  ];
+
   return (
-    <div className="space-y-4 animate-fade-in p-4 sm:p-6 max-w-[1720px] mx-auto">
-      {/* ------------------------------------------------------------- */}
-      {/* 1. TOP STUDIO BREADCRUMB & METADATA BAR */}
-      {/* ------------------------------------------------------------- */}
-      <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[#1C1C24]">
+    <div className="space-y-6 p-4 sm:p-6 max-w-7xl mx-auto text-left">
+      {/* 1. Top Breadcrumb & Metadata Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-neutral-300">
         <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={onBack}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#09090D] hover:bg-[#14141A] border border-[#202028] text-xs font-mono text-[#A1A1AA] hover:text-white transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white hover:bg-neutral-100 border border-neutral-300 text-xs font-mono text-neutral-600 hover:text-neutral-950 transition-colors"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>Workspace</span>
           </button>
-          <div className="h-4 w-[1px] bg-[#26262E]" />
+          <div className="h-4 w-[1px] bg-neutral-300" />
           <div>
-            <h2 className="text-sm font-bold text-white truncate max-w-sm sm:max-w-md">
+            <h2 className="text-sm font-bold text-neutral-950 truncate max-w-sm sm:max-w-md">
               {analysis.title}
             </h2>
-            <div className="flex items-center gap-3 text-[10px] font-mono text-[#71717A] mt-0.5">
+            <div className="flex items-center gap-3 text-[10px] font-mono text-neutral-500 mt-0.5">
               <span>{analysis.duration_formatted}</span>
               <span>·</span>
               <span className="uppercase">{analysis.media_type}</span>
               {analysis.selected_model && (
                 <>
                   <span>·</span>
-                  <span className="text-violet-400 font-semibold">{analysis.selected_model}</span>
+                  <span className="text-neutral-950 font-semibold">{analysis.selected_model}</span>
                 </>
               )}
             </div>
@@ -211,218 +223,30 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
           <button
             type="button"
             onClick={handleSaveBookmark}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#0A0A0E] hover:bg-[#14141A] border border-[#202028] text-xs font-mono text-violet-300 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white hover:bg-neutral-100 border border-neutral-300 text-xs font-mono text-neutral-950 transition-colors"
             title="Bookmark Current Video Timestamp"
           >
-            <BookmarkIcon className="w-3.5 h-3.5 text-violet-400" />
+            <BookmarkIcon className="w-3.5 h-3.5 text-neutral-950" />
             <span>Bookmark [{formatTimestamp(currentTime)}]</span>
           </button>
         </div>
       </div>
 
-      {/* ------------------------------------------------------------- */}
-      {/* 2. FLAGSHIP 3-COLUMN STUDIO LAYOUT */}
-      {/* ------------------------------------------------------------- */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-        {/* ================= LEFT COLUMN: Chapters, Transcript & Entities (3.5 cols) ================= */}
-        <div className="lg:col-span-4 bg-[#070709] border border-[#1A1A22] rounded-2xl p-4 space-y-4 h-[840px] flex flex-col">
-          {/* Subtab Selector */}
-          <div className="flex items-center gap-1 p-1 rounded-xl bg-[#0E0E14] border border-[#1F1F28] shrink-0 font-mono text-[11px]">
-            <button
-              type="button"
-              onClick={() => setLeftTab('chapters')}
-              className={`flex-1 py-1.5 rounded-lg font-semibold transition-all ${
-                leftTab === 'chapters'
-                  ? 'bg-white text-black shadow-sm'
-                  : 'text-[#A1A1AA] hover:text-white'
-              }`}
-            >
-              Chapters ({analysis.chapters.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setLeftTab('transcript')}
-              className={`flex-1 py-1.5 rounded-lg font-semibold transition-all ${
-                leftTab === 'transcript'
-                  ? 'bg-white text-black shadow-sm'
-                  : 'text-[#A1A1AA] hover:text-white'
-              }`}
-            >
-              Dialogue ({analysis.transcript.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setLeftTab('entities')}
-              className={`flex-1 py-1.5 rounded-lg font-semibold transition-all ${
-                leftTab === 'entities'
-                  ? 'bg-white text-black shadow-sm'
-                  : 'text-[#A1A1AA] hover:text-white'
-              }`}
-            >
-              Entities ({analysis.entities.length})
-            </button>
+      {/* 2. Video Player in a Bordered Frame */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <div className="lg:col-span-8 space-y-4">
+          {/* Bordered Frame for Video Player */}
+          <div className="p-3 bg-white border border-neutral-300 rounded-sm">
+            <VideoPlayer
+              ref={playerRef}
+              src={analysis.source_url || getMediaStreamUrl(analysis.file_id)}
+              mediaType={analysis.media_type}
+              title={analysis.title}
+              onTimeUpdate={(t) => setCurrentTime(t)}
+            />
           </div>
 
-          {/* Chapters Subtab View */}
-          {leftTab === 'chapters' && (
-            <div className="flex-1 overflow-y-auto space-y-2.5 pr-1">
-              {analysis.chapters.map((ch, idx) => {
-                const isActive = currentTime >= ch.start_time && currentTime < ch.end_time;
-
-                return (
-                  <div
-                    key={idx}
-                    onClick={() => handleSeek(ch.start_time)}
-                    className={`p-3.5 rounded-xl border cursor-pointer transition-all duration-150 text-left ${
-                      isActive
-                        ? 'bg-[#101016] border-violet-500/80 shadow-md ring-1 ring-violet-500/30'
-                        : 'bg-[#0B0B0F] border-[#1C1C24] hover:border-zinc-700'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-2 mb-1.5">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-mono text-[#52525B]">
-                          CH {String(idx + 1).padStart(2, '0')}
-                        </span>
-                        <span className="text-xs font-bold text-white line-clamp-1">
-                          {ch.title}
-                        </span>
-                      </div>
-                      <span
-                        className={`text-[10px] font-mono px-2 py-0.5 rounded shrink-0 ${
-                          isActive
-                            ? 'bg-violet-600 text-white font-semibold'
-                            : 'bg-[#14141C] text-[#A1A1AA]'
-                        }`}
-                      >
-                        {ch.start_time_formatted || formatTimestamp(ch.start_time)}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-[#A1A1AA] line-clamp-2 leading-relaxed">
-                      {ch.summary}
-                    </p>
-
-                    {/* Key Moments on Chapter */}
-                    {ch.key_moments && ch.key_moments.length > 0 && (
-                      <div className="mt-2 pt-2 border-t border-[#1C1C24] space-y-1">
-                        {ch.key_moments.slice(0, 3).map((km, kmIdx) => (
-                          <div
-                            key={kmIdx}
-                            className="flex items-center gap-1.5 text-[10px] text-[#71717A] hover:text-violet-300 transition-colors"
-                          >
-                            <span className="w-1 h-1 rounded-full bg-violet-400" />
-                            <span className="truncate">{km}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Transcript Subtab View */}
-          {leftTab === 'transcript' && (
-            <div className="flex-1 flex flex-col space-y-3 min-h-0 text-left">
-              <div className="relative shrink-0">
-                <Search className="w-3.5 h-3.5 text-[#52525B] absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  value={transcriptSearch}
-                  onChange={(e) => setTranscriptSearch(e.target.value)}
-                  placeholder="Filter dialogue by text or speaker..."
-                  className="w-full pl-8 pr-3 py-1.5 bg-[#0A0A0E] border border-[#1C1C24] rounded-xl text-xs text-white placeholder:text-[#52525B] focus:outline-none focus:border-violet-500 font-mono"
-                />
-              </div>
-
-              <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-                {filteredTranscript.length === 0 ? (
-                  <p className="text-xs text-[#52525B] text-center pt-8 font-mono">
-                    No dialogue matches found.
-                  </p>
-                ) : (
-                  filteredTranscript.map((t, idx) => {
-                    const isActive = currentTime >= t.start_time && currentTime <= t.end_time;
-
-                    return (
-                      <div
-                        key={idx}
-                        onClick={() => handleSeek(t.start_time)}
-                        className={`p-3 rounded-xl border cursor-pointer transition-all duration-150 ${
-                          isActive
-                            ? 'bg-[#101016] border-violet-500/80 shadow-sm'
-                            : 'bg-[#0B0B0F] border-[#1C1C24] hover:border-zinc-700'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between text-[10px] font-mono mb-1">
-                          <span className="text-violet-400 font-semibold">{t.speaker || 'Speaker'}</span>
-                          <span className="text-[#52525B]">
-                            {t.start_time_formatted || formatTimestamp(t.start_time)}
-                          </span>
-                        </div>
-                        <p className="text-xs text-[#D4D4D8] leading-relaxed">{t.text}</p>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Entities Subtab View */}
-          {leftTab === 'entities' && (
-            <div className="flex-1 overflow-y-auto space-y-2.5 pr-1 text-left">
-              {analysis.entities.length === 0 ? (
-                <p className="text-xs text-[#52525B] text-center pt-8 font-mono">
-                  No entities extracted for this media.
-                </p>
-              ) : (
-                analysis.entities.map((ent, idx) => (
-                  <div
-                    key={idx}
-                    className="p-3 rounded-xl bg-[#0B0B0F] border border-[#1C1C24] space-y-1.5"
-                  >
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-bold text-white">{ent.name}</span>
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#13131A] text-violet-300">
-                        {ent.category}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-[#A1A1AA] leading-relaxed">{ent.description}</p>
-                    {ent.timestamps && ent.timestamps.length > 0 && (
-                      <div className="flex flex-wrap gap-1 pt-1">
-                        {ent.timestamps.map((ts, tsIdx) => (
-                          <button
-                            key={tsIdx}
-                            type="button"
-                            onClick={() => handleSeek(parseTimestamp(ts))}
-                            className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#161622] hover:bg-violet-900/40 text-violet-300 transition-colors"
-                          >
-                            {ts}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* ================= CENTER COLUMN: Player, 3D Spatial Timeline & Summary (5 cols) ================= */}
-        <div className="lg:col-span-5 space-y-4 text-left">
-          {/* Synchronized Media Player */}
-          <VideoPlayer
-            ref={playerRef}
-            src={analysis.source_url || getMediaStreamUrl(analysis.file_id)}
-            mediaType={analysis.media_type}
-            title={analysis.title}
-            onTimeUpdate={(t) => setCurrentTime(t)}
-          />
-
-          {/* 3D Spatial Chapter Timeline */}
+          {/* 3D Spatial Timeline */}
           <SpatialTimeline3D
             chapters={analysis.chapters}
             currentTime={currentTime}
@@ -431,35 +255,370 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
             className="w-full h-28"
           />
 
-          {/* Executive Summary & Key Insights Card */}
-          <div className="bg-[#070709] border border-[#1A1A22] rounded-2xl p-5 space-y-4">
+          {/* Underlined Text Tabs Header */}
+          <div className="flex items-center gap-6 border-b border-neutral-300 font-mono text-xs pt-2">
+            {tabs.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setActiveTab(t.id)}
+                className={`pb-2.5 font-medium transition-colors border-b-2 -mb-px ${
+                  activeTab === t.id
+                    ? 'border-neutral-950 text-neutral-950 font-semibold'
+                    : 'border-transparent text-neutral-500 hover:text-neutral-950'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Underlined Text Tab Panels */}
+          <div className="p-6 bg-white border border-neutral-300 rounded-sm min-h-[360px]">
+            {/* Tab 1: Chapters */}
+            {activeTab === 'chapters' && (
+              <div className="space-y-3">
+                {analysis.chapters.map((ch, idx) => {
+                  const isActive = currentTime >= ch.start_time && currentTime < ch.end_time;
+                  return (
+                    <div
+                      key={idx}
+                      onClick={() => handleSeek(ch.start_time)}
+                      className={`p-4 rounded-sm border cursor-pointer transition-colors ${
+                        isActive
+                          ? 'border-neutral-950 bg-neutral-50 ring-1 ring-neutral-950'
+                          : 'border-neutral-200 hover:border-neutral-400 bg-white'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-3 mb-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-mono text-neutral-400">
+                            CH {String(idx + 1).padStart(2, '0')}
+                          </span>
+                          <span className="text-xs font-bold text-neutral-950 line-clamp-1">
+                            {ch.title}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSeek(ch.start_time);
+                          }}
+                          className={`font-mono text-[11px] px-2 py-0.5 rounded-sm border ${
+                            isActive
+                              ? 'bg-neutral-950 text-white border-neutral-950 font-medium'
+                              : 'bg-neutral-100 text-neutral-700 border-neutral-300 hover:border-neutral-950'
+                          }`}
+                        >
+                          [{ch.start_time_formatted || formatTimestamp(ch.start_time)}]
+                        </button>
+                      </div>
+                      <p className="text-xs text-neutral-600 leading-relaxed">
+                        {ch.summary}
+                      </p>
+
+                      {ch.key_moments && ch.key_moments.length > 0 && (
+                        <div className="mt-2.5 pt-2 border-t border-neutral-200 flex flex-wrap gap-2 text-[10px] font-mono text-neutral-500">
+                          {ch.key_moments.map((km, kmIdx) => (
+                            <span key={kmIdx} className="bg-neutral-50 px-2 py-0.5 rounded-sm border border-neutral-200">
+                              • {km}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Tab 2: Transcript */}
+            {activeTab === 'transcript' && (
+              <div className="space-y-4">
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={transcriptSearch}
+                    onChange={(e) => setTranscriptSearch(e.target.value)}
+                    placeholder="Filter dialogue by text or speaker..."
+                    className="w-full pl-9 pr-3 py-2 bg-white border border-neutral-300 rounded-sm text-xs text-neutral-950 placeholder:text-neutral-400 focus:outline-none focus:border-neutral-950 font-mono"
+                  />
+                </div>
+
+                <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
+                  {filteredTranscript.length === 0 ? (
+                    <p className="text-xs text-neutral-500 text-center py-8 font-mono">
+                      No dialogue segments match search query.
+                    </p>
+                  ) : (
+                    filteredTranscript.map((t, idx) => {
+                      const isActive = currentTime >= t.start_time && currentTime <= t.end_time;
+                      return (
+                        <div
+                          key={idx}
+                          onClick={() => handleSeek(t.start_time)}
+                          className={`p-3 rounded-sm border cursor-pointer transition-colors ${
+                            isActive
+                              ? 'border-neutral-950 bg-neutral-50 ring-1 ring-neutral-950'
+                              : 'border-neutral-200 hover:border-neutral-300 bg-white'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between text-[10px] font-mono mb-1">
+                            <span className="text-neutral-950 font-semibold">{t.speaker || 'Speaker'}</span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleSeek(t.start_time);
+                              }}
+                              className="text-neutral-700 hover:text-neutral-950 font-mono text-[10px] hover:underline"
+                            >
+                              [{t.start_time_formatted || formatTimestamp(t.start_time)}]
+                            </button>
+                          </div>
+                          <p className="text-xs text-neutral-800 leading-relaxed font-sans">{t.text}</p>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Tab 3: Q&A */}
+            {activeTab === 'qa' && (
+              <div className="space-y-4">
+                <div className="space-y-3 max-h-[460px] overflow-y-auto pr-1">
+                  {chatMessages.map((m) => (
+                    <div
+                      key={m.id}
+                      className={`p-3.5 rounded-sm text-xs space-y-1.5 ${
+                        m.role === 'user'
+                          ? 'bg-neutral-100 border border-neutral-300 ml-6'
+                          : 'bg-neutral-50 border border-neutral-200 mr-4'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between text-[10px] font-mono text-neutral-500">
+                        <span className="font-semibold text-neutral-950">
+                          {m.role === 'assistant' ? 'VYORA Intelligence' : 'You'}
+                        </span>
+                        <span>{m.timestamp}</span>
+                      </div>
+                      <p className="text-neutral-900 leading-relaxed whitespace-pre-line">{m.content}</p>
+
+                      {/* Clickable Citations [MM:SS] */}
+                      {m.citations && m.citations.length > 0 && (
+                        <div className="pt-2 border-t border-neutral-200 flex flex-wrap gap-1.5">
+                          {m.citations.map((c, cIdx) => (
+                            <button
+                              key={cIdx}
+                              type="button"
+                              onClick={() => handleSeek(c.seconds || parseTimestamp(c.formatted))}
+                              className="flex items-center gap-1 px-2 py-0.5 rounded-sm bg-white hover:bg-neutral-100 border border-neutral-300 text-[10px] font-mono text-neutral-900 transition-colors"
+                            >
+                              <Play className="w-2.5 h-2.5 fill-current text-neutral-950" />
+                              <span>[{c.formatted}]</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {isChatLoading && (
+                    <div className="p-3 rounded-sm bg-neutral-50 border border-neutral-200 text-xs text-neutral-500 flex items-center gap-2 font-mono">
+                      <span className="w-1.5 h-1.5 rounded-full bg-neutral-950 animate-pulse" />
+                      <span>Synthesizing answer from media context...</span>
+                    </div>
+                  )}
+                  <div ref={chatBottomRef} />
+                </div>
+
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleChatSend();
+                  }}
+                  className="pt-2 border-t border-neutral-200 relative flex items-center gap-2"
+                >
+                  <input
+                    type="text"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    placeholder="Ask any question about the recording..."
+                    className="flex-1 px-3 py-2 bg-white border border-neutral-300 rounded-sm text-xs text-neutral-950 placeholder:text-neutral-400 focus:outline-none focus:border-neutral-950 font-mono"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!chatInput.trim() || isChatLoading}
+                    className="px-4 py-2 rounded-sm bg-neutral-950 hover:bg-neutral-800 text-white text-xs font-mono font-medium disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <span>Send</span>
+                  </button>
+                </form>
+              </div>
+            )}
+
+            {/* Tab 4: 3D Map */}
+            {activeTab === 'map' && (
+              <div className="space-y-3">
+                <div className="text-xs font-mono text-neutral-500 flex justify-between">
+                  <span>Interactive knowledge topology manifold</span>
+                  <span>{graphData.nodes.length} nodes · {graphData.links.length} relational links</span>
+                </div>
+                <div className="rounded-sm border border-neutral-300 overflow-hidden bg-white">
+                  <KnowledgeMap3D
+                    nodes={graphData.nodes}
+                    links={graphData.links}
+                    onSelectNode={(node) => {
+                      if (node.timestamp) handleSeek(parseTimestamp(node.timestamp));
+                    }}
+                    className="w-full h-[440px]"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Tab 5: Notes & Bookmarks */}
+            {activeTab === 'notes' && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between border-b border-neutral-200 pb-3">
+                  <span className="text-xs font-mono font-semibold text-neutral-950">
+                    NOTES & BOOKMARKS
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddingNote(!isAddingNote)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-white hover:bg-neutral-100 border border-neutral-300 text-xs font-mono text-neutral-950 transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>{isAddingNote ? 'Cancel' : `Add note at [${formatTimestamp(currentTime)}]`}</span>
+                  </button>
+                </div>
+
+                {isAddingNote && (
+                  <form onSubmit={handleSaveNote} className="p-4 rounded-sm bg-neutral-50 border border-neutral-300 space-y-3">
+                    <input
+                      type="text"
+                      value={newNoteTitle}
+                      onChange={(e) => setNewNoteTitle(e.target.value)}
+                      placeholder="Note headline..."
+                      className="w-full px-3 py-1.5 bg-white border border-neutral-300 rounded-sm text-xs text-neutral-950 placeholder:text-neutral-400 focus:outline-none focus:border-neutral-950 font-mono"
+                    />
+                    <textarea
+                      rows={3}
+                      value={newNoteContent}
+                      onChange={(e) => setNewNoteContent(e.target.value)}
+                      placeholder="Observations, citations or thoughts..."
+                      className="w-full px-3 py-1.5 bg-white border border-neutral-300 rounded-sm text-xs text-neutral-950 placeholder:text-neutral-400 focus:outline-none focus:border-neutral-950 resize-none font-mono"
+                    />
+                    <button
+                      type="submit"
+                      className="px-4 py-1.5 rounded-sm bg-neutral-950 text-white hover:bg-neutral-800 text-xs font-medium font-mono transition-all"
+                    >
+                      Save note
+                    </button>
+                  </form>
+                )}
+
+                {/* Notes List */}
+                <div className="space-y-3">
+                  <div className="text-xs font-mono font-medium text-neutral-500 uppercase tracking-wider">
+                    Recorded notes ({notes.length})
+                  </div>
+                  {notes.length === 0 ? (
+                    <p className="text-xs text-neutral-400 font-mono">No notes recorded yet.</p>
+                  ) : (
+                    notes.map((n) => (
+                      <div
+                        key={n.id}
+                        onClick={() => handleSeek(n.timestamp_seconds || 0)}
+                        className="p-3 rounded-sm bg-white border border-neutral-300 hover:border-neutral-950 cursor-pointer space-y-1"
+                      >
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-bold text-neutral-950">{n.title}</span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSeek(n.timestamp_seconds || 0);
+                            }}
+                            className="text-[11px] font-mono text-neutral-700 hover:underline"
+                          >
+                            [{n.timestamp_formatted}]
+                          </button>
+                        </div>
+                        <p className="text-xs text-neutral-600 leading-relaxed">{n.content}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {/* Bookmarks List */}
+                <div className="space-y-3 pt-4 border-t border-neutral-200">
+                  <div className="text-xs font-mono font-medium text-neutral-500 uppercase tracking-wider">
+                    Timestamp bookmarks ({bookmarks.length})
+                  </div>
+                  {bookmarks.length === 0 ? (
+                    <p className="text-xs text-neutral-400 font-mono">No bookmarks added yet.</p>
+                  ) : (
+                    bookmarks.map((bm) => (
+                      <div
+                        key={bm.id}
+                        onClick={() => handleSeek(bm.timestamp_seconds)}
+                        className="p-3 rounded-sm bg-white border border-neutral-300 hover:border-neutral-950 cursor-pointer flex items-center justify-between text-xs"
+                      >
+                        <span className="font-bold text-neutral-950 truncate max-w-[240px]">{bm.label}</span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSeek(bm.timestamp_seconds);
+                          }}
+                          className="font-mono text-[11px] text-neutral-700 hover:underline px-2 py-0.5 rounded-sm bg-neutral-100 border border-neutral-200"
+                        >
+                          [{bm.timestamp_formatted}]
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Right Column: Executive Summary & Action Items Card (4 cols) */}
+        <div className="lg:col-span-4 space-y-4">
+          <div className="bg-white border border-neutral-300 rounded-sm p-6 space-y-4">
             <div>
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-mono uppercase tracking-widest text-violet-400">
-                  Multimodal Cognitive Synthesis
+                <span className="text-[10px] font-mono uppercase tracking-widest text-neutral-500">
+                  COGNITIVE SYNTHESIS
                 </span>
                 {analysis.sentiment_and_tone && (
-                  <span className="text-[10px] font-mono text-[#71717A]">
+                  <span className="text-[10px] font-mono text-neutral-400">
                     TONE: {typeof analysis.sentiment_and_tone === 'object' ? analysis.sentiment_and_tone.overall : 'Analytical'}
                   </span>
                 )}
               </div>
-              <h3 className="text-sm font-bold text-white mt-1">Executive Summary</h3>
-              <p className="text-xs text-[#A1A1AA] leading-relaxed mt-2 whitespace-pre-line">
+              <h3 className="text-sm font-bold text-neutral-950 mt-1 font-sans">Executive summary</h3>
+              <p className="text-xs text-neutral-600 leading-relaxed mt-2 whitespace-pre-line font-normal">
                 {analysis.executive_summary || analysis.overview}
               </p>
             </div>
 
             {/* Key Takeaways */}
             {analysis.key_takeaways && analysis.key_takeaways.length > 0 && (
-              <div className="pt-3 border-t border-[#1C1C24] space-y-2">
-                <h4 className="text-xs font-semibold text-[#D4D4D8] font-mono uppercase tracking-wider text-[11px]">
-                  Key Takeaways
+              <div className="pt-4 border-t border-neutral-200 space-y-2.5">
+                <h4 className="text-[11px] font-mono font-semibold text-neutral-950 uppercase tracking-wider">
+                  Key takeaways
                 </h4>
                 <div className="space-y-1.5">
                   {analysis.key_takeaways.map((k, idx) => (
-                    <div key={idx} className="flex items-start gap-2 text-xs text-[#A1A1AA]">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-violet-400 mt-0.5 shrink-0" />
+                    <div key={idx} className="flex items-start gap-2 text-xs text-neutral-700">
+                      <span className="font-mono text-neutral-400 shrink-0">•</span>
                       <span>{k}</span>
                     </div>
                   ))}
@@ -469,29 +628,29 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
 
             {/* Action Items */}
             {analysis.action_items && analysis.action_items.length > 0 && (
-              <div className="pt-3 border-t border-[#1C1C24] space-y-2">
-                <h4 className="text-xs font-semibold text-[#D4D4D8] font-mono uppercase tracking-wider text-[11px]">
-                  Action Items & Recommendations
+              <div className="pt-4 border-t border-neutral-200 space-y-2.5">
+                <h4 className="text-[11px] font-mono font-semibold text-neutral-950 uppercase tracking-wider">
+                  Action items
                 </h4>
                 <div className="space-y-2">
                   {analysis.action_items.map((act, idx) => (
                     <div
                       key={idx}
-                      className="p-3 rounded-xl bg-[#0B0B0F] border border-[#1C1C24] text-xs space-y-1"
+                      className="p-3 rounded-sm bg-neutral-50 border border-neutral-200 text-xs space-y-1"
                     >
                       <div className="flex items-center justify-between">
-                        <span className="font-semibold text-white">{act.task}</span>
+                        <span className="font-semibold text-neutral-950">{act.task}</span>
                         {act.timestamp && (
                           <button
                             type="button"
                             onClick={() => handleSeek(parseTimestamp(act.timestamp!))}
-                            className="text-[10px] font-mono text-violet-400 hover:underline"
+                            className="font-mono text-[10px] text-neutral-700 hover:underline"
                           >
-                            {act.timestamp}
+                            [{act.timestamp}]
                           </button>
                         )}
                       </div>
-                      <p className="text-[11px] text-[#71717A]">{act.context}</p>
+                      <p className="text-[11px] text-neutral-500">{act.context}</p>
                     </div>
                   ))}
                 </div>
@@ -499,206 +658,8 @@ export const WorkspacePage: React.FC<WorkspacePageProps> = ({
             )}
           </div>
         </div>
-
-        {/* ================= RIGHT COLUMN: Grounded Q&A, Notes & Bookmarks (3.5 cols) ================= */}
-        <div className="lg:col-span-3 bg-[#070709] border border-[#1A1A22] rounded-2xl p-4 space-y-4 h-[840px] flex flex-col text-left">
-          {/* Subtab Selector */}
-          <div className="flex items-center gap-1 p-1 rounded-xl bg-[#0E0E14] border border-[#1F1F28] shrink-0 font-mono text-[11px]">
-            <button
-              type="button"
-              onClick={() => setRightTab('chat')}
-              className={`flex-1 py-1.5 rounded-lg font-semibold transition-all ${
-                rightTab === 'chat'
-                  ? 'bg-white text-black shadow-sm'
-                  : 'text-[#A1A1AA] hover:text-white'
-              }`}
-            >
-              Ask AI
-            </button>
-            <button
-              type="button"
-              onClick={() => setRightTab('notes')}
-              className={`flex-1 py-1.5 rounded-lg font-semibold transition-all ${
-                rightTab === 'notes'
-                  ? 'bg-white text-black shadow-sm'
-                  : 'text-[#A1A1AA] hover:text-white'
-              }`}
-            >
-              Notes ({notes.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setRightTab('bookmarks')}
-              className={`flex-1 py-1.5 rounded-lg font-semibold transition-all ${
-                rightTab === 'bookmarks'
-                  ? 'bg-white text-black shadow-sm'
-                  : 'text-[#A1A1AA] hover:text-white'
-              }`}
-            >
-              Bookmarks ({bookmarks.length})
-            </button>
-          </div>
-
-          {/* Grounded AI Chat Subtab */}
-          {rightTab === 'chat' && (
-            <div className="flex-1 flex flex-col min-h-0 space-y-3">
-              <div className="flex-1 overflow-y-auto space-y-3 pr-1">
-                {chatMessages.map((m) => (
-                  <div
-                    key={m.id}
-                    className={`p-3.5 rounded-xl text-xs space-y-1.5 ${
-                      m.role === 'user'
-                        ? 'bg-[#12121A] border border-[#202028] ml-4'
-                        : 'bg-[#0B0B0F] border border-[#1C1C24] mr-2'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between text-[10px] font-mono text-[#52525B]">
-                      <span className={m.role === 'assistant' ? 'text-violet-400 font-semibold' : 'text-[#A1A1AA]'}>
-                        {m.role === 'assistant' ? 'VYORA Intelligence' : 'You'}
-                      </span>
-                      <span>{m.timestamp}</span>
-                    </div>
-                    <p className="text-[#D4D4D8] leading-relaxed whitespace-pre-line">{m.content}</p>
-
-                    {/* Grounded Citations (Click to Seek Video) */}
-                    {m.citations && m.citations.length > 0 && (
-                      <div className="pt-2 border-t border-[#1C1C24] flex flex-wrap gap-1.5">
-                        {m.citations.map((c, cIdx) => (
-                          <button
-                            key={cIdx}
-                            type="button"
-                            onClick={() => handleSeek(c.seconds || parseTimestamp(c.formatted))}
-                            className="flex items-center gap-1 px-2 py-0.5 rounded bg-violet-950/40 hover:bg-violet-900/60 border border-violet-500/30 text-[10px] font-mono text-violet-300 transition-colors"
-                          >
-                            <Play className="w-2.5 h-2.5 fill-current" />
-                            <span>[{c.formatted}]</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
-                {isChatLoading && (
-                  <div className="p-3 rounded-xl bg-[#0B0B0F] border border-[#1C1C24] text-xs text-[#71717A] flex items-center gap-2 font-mono">
-                    <span className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" />
-                    <span>Gemini is synthesizing answer from video...</span>
-                  </div>
-                )}
-                <div ref={chatBottomRef} />
-              </div>
-
-              {/* Chat Input Box */}
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  handleChatSend();
-                }}
-                className="pt-2 border-t border-[#1C1C24] relative"
-              >
-                <input
-                  type="text"
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  placeholder="Ask any question about the video..."
-                  className="w-full pl-3 pr-10 py-2.5 bg-[#0B0B0F] border border-[#1C1C24] rounded-xl text-xs text-white placeholder:text-[#52525B] focus:outline-none focus:border-violet-500 font-mono"
-                />
-                <button
-                  type="submit"
-                  disabled={!chatInput.trim() || isChatLoading}
-                  className="absolute right-1.5 top-1/2 -translate-y-1/2 p-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                >
-                  <Send className="w-3.5 h-3.5" />
-                </button>
-              </form>
-            </div>
-          )}
-
-          {/* Notes Subtab */}
-          {rightTab === 'notes' && (
-            <div className="flex-1 flex flex-col min-h-0 space-y-3">
-              <button
-                type="button"
-                onClick={() => setIsAddingNote(!isAddingNote)}
-                className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-[#0F0F16] border border-[#202028] hover:border-zinc-700 text-xs font-mono text-[#D4D4D8] transition-colors"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>{isAddingNote ? 'Cancel Note' : `Add Note at [${formatTimestamp(currentTime)}]`}</span>
-              </button>
-
-              {isAddingNote && (
-                <form onSubmit={handleSaveNote} className="p-3 rounded-xl bg-[#0B0B0F] border border-[#1C1C24] space-y-2">
-                  <input
-                    type="text"
-                    value={newNoteTitle}
-                    onChange={(e) => setNewNoteTitle(e.target.value)}
-                    placeholder="Note headline..."
-                    className="w-full px-2.5 py-1.5 bg-[#14141C] border border-[#26262E] rounded-lg text-xs text-white placeholder:text-[#52525B] focus:outline-none focus:border-violet-500 font-mono"
-                  />
-                  <textarea
-                    rows={3}
-                    value={newNoteContent}
-                    onChange={(e) => setNewNoteContent(e.target.value)}
-                    placeholder="Observations, citations or thoughts..."
-                    className="w-full px-2.5 py-1.5 bg-[#14141C] border border-[#26262E] rounded-lg text-xs text-white placeholder:text-[#52525B] focus:outline-none focus:border-violet-500 resize-none font-mono"
-                  />
-                  <button
-                    type="submit"
-                    className="w-full py-1.5 rounded-lg bg-white text-black hover:bg-zinc-200 text-xs font-bold transition-all"
-                  >
-                    Save Note
-                  </button>
-                </form>
-              )}
-
-              <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-                {notes.length === 0 ? (
-                  <p className="text-xs text-[#52525B] text-center pt-8 font-mono">
-                    No notes recorded yet.
-                  </p>
-                ) : (
-                  notes.map((n) => (
-                    <div
-                      key={n.id}
-                      onClick={() => handleSeek(n.timestamp_seconds || 0)}
-                      className="p-3 rounded-xl bg-[#0B0B0F] border border-[#1C1C24] hover:border-zinc-700 cursor-pointer space-y-1"
-                    >
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-bold text-white">{n.title}</span>
-                        <span className="text-[10px] font-mono text-violet-400">{n.timestamp_formatted}</span>
-                      </div>
-                      <p className="text-xs text-[#71717A] leading-relaxed">{n.content}</p>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Bookmarks Subtab */}
-          {rightTab === 'bookmarks' && (
-            <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-              {bookmarks.length === 0 ? (
-                <p className="text-xs text-[#52525B] text-center pt-8 font-mono">
-                  No bookmarks created yet. Use the top bookmark button.
-                </p>
-              ) : (
-                bookmarks.map((bm) => (
-                  <div
-                    key={bm.id}
-                    onClick={() => handleSeek(bm.timestamp_seconds)}
-                    className="p-3 rounded-xl bg-[#0B0B0F] border border-[#1C1C24] hover:border-zinc-700 cursor-pointer flex items-center justify-between text-xs"
-                  >
-                    <span className="font-bold text-white truncate max-w-[180px]">{bm.label}</span>
-                    <span className="text-[10px] font-mono text-violet-400 px-2 py-0.5 rounded bg-[#13131C]">
-                      {bm.timestamp_formatted}
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-        </div>
       </div>
     </div>
   );
 };
+export default WorkspacePage;
