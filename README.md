@@ -35,7 +35,6 @@
 - [REST API Reference](#-rest-api-reference)
 - [Automated Verification & Test Suite](#-automated-verification--test-suite)
 - [Security & SSRF Guardrails](#-security--ssrf-guardrails)
-- [Production Deployment (Render)](#-production-deployment-render)
 - [License & Author](#-license--author)
 
 ---
@@ -385,20 +384,6 @@ VYORA AI implements strict security policies to protect both server infrastructu
    - Blocks cloud metadata endpoints (`169.254.169.254`).
 3. **Hard Download Caps**: Remote downloads enforce a strict **500 MB streaming limit**, aborting downloads that exceed capacity to prevent denial-of-service.
 4. **MIME-Type & Magic Byte Validation**: Uploaded media is inspected via file headers to prevent malicious executable masquerading.
-
----
-
-## 🌐 Production Deployment (Render)
-
-The project includes a production-ready `render.yaml` Blueprint:
-
-1. Push your code to GitHub.
-2. Navigate to [dashboard.render.com](https://dashboard.render.com/) and click **New + ➔ Blueprint**.
-3. Select this repository. Render will automatically provision:
-   - **`vyora-backend`**: Python Web Service running `uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
-   - **`vyora-frontend`**: Static Site hosting the compiled React SPA with client-side routing rewrites.
-4. Add your `GEMINI_API_KEY` under the backend environment configuration.
-5. For advanced settings and custom domain configurations, see [`DEPLOYMENT.md`](DEPLOYMENT.md).
 
 ---
 
