@@ -101,7 +101,7 @@ VYORA AI features four custom Three.js hardware-accelerated 3D visualizers:
 │                          │ concentric spinning gimbal rings and        │
 │                          │ responsive 2,000+ starfield particle swarm. │
 ├──────────────────────────┼─────────────────────────────────────────────┤
-│ SpatialTimeline3D        │ Curved 3D orbital trajectory rendering      │
+│ SpatialTimeline3D        │ Curved 3D orbital trajectory visualizing    │
 │                          │ luminous chapter nodes in the AI Workspace. │
 │                          │ Supports raycasting, hover tooltips, and    │
 │                          │ one-click video seek interaction.           │
@@ -166,7 +166,7 @@ flowchart TD
     
     API --> ModelDisc
     ModelDisc <-->|"Model Verification"| GeminiAPI
-    ThreeCanvas <-->|"Render Pipeline Stage"| JobEngine
+    ThreeCanvas <-->|"Display Pipeline Stage"| JobEngine
 ```
 
 ---
@@ -215,10 +215,8 @@ VYORA-AI/
 │   ├── tsconfig.json
 │   └── vite.config.ts
 ├── screenshots/                        # High-resolution application screenshots
-├── test_live_render_integration.py     # Live production integration test script
-├── render.yaml                         # Production Render Blueprint configuration
 ├── ENVIRONMENT_VARIABLES.md            # Environment variable specifications
-├── DEPLOYMENT.md                       # Comprehensive deployment guide
+├── DEPLOYMENT.md                       # Deployment guide
 └── README.md
 ```
 
