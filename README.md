@@ -1,393 +1,215 @@
-# VYORA AI — Video & Media Knowledge Extractor ⚡
+# VYORA AI — Video and Media Knowledge Extractor
 
-<p align="center">
-  <img src="screenshots/vyora_homepage.png" alt="VYORA AI Hero" width="100%" style="border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,0.8);" />
-</p>
+Turns long video and audio content into structured, searchable knowledge, with chapters, transcripts, and timestamped question answering.
 
-<p align="center">
-  <strong>Every Video Holds a Universe of Knowledge.</strong><br>
-  <em>An immersive, full-stack multimodal video intelligence platform powered by Google Gemini 3.8 Flash, FastAPI, Three.js, and React.</em>
-</p>
+Repository: Video-Media-Knowledge-Extractor
 
-<p align="center">
-  <a href="https://fastapi.tiangolo.com"><img src="https://img.shields.io/badge/FastAPI-0.115+-009688?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI" /></a>
-  <a href="https://react.dev"><img src="https://img.shields.io/badge/React-18%2F19-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="React" /></a>
-  <a href="https://threejs.org"><img src="https://img.shields.io/badge/Three.js-r186+-black?style=for-the-badge&logo=three.js&logoColor=white" alt="Three.js" /></a>
-  <a href="https://vitejs.dev"><img src="https://img.shields.io/badge/Vite-6+-646CFF?style=for-the-badge&logo=vite&logoColor=white" alt="Vite" /></a>
-  <a href="https://tailwindcss.com"><img src="https://img.shields.io/badge/Tailwind_CSS-3.4+-38B2AC?style=for-the-badge&logo=tailwindcss&logoColor=white" alt="Tailwind CSS" /></a>
-  <a href="https://aistudio.google.com"><img src="https://img.shields.io/badge/Google_Gemini-3.8_Flash-4285F4?style=for-the-badge&logo=google&logoColor=white" alt="Google Gemini" /></a>
-  <a href="https://docs.pytest.org"><img src="https://img.shields.io/badge/Pytest-35%20Passed-brightgreen?style=for-the-badge&logo=pytest&logoColor=white" alt="Tests" /></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge" alt="MIT License" /></a>
-</p>
+## Table of Contents
 
----
+- [Overview](#overview)
+- [Features](#features)
+- [System Architecture](#system-architecture)
+- [Project Structure](#project-structure)
+- [Getting Started](#getting-started)
+- [Environment Variables](#environment-variables)
+- [API Reference](#api-reference)
+- [Testing](#testing)
+- [Security](#security)
+- [Contributing](#contributing)
+- [License](#license)
+- [Author](#author)
 
-## 📑 Table of Contents
+## Overview
 
-- [Overview](#-overview)
-- [Visual Interface & 3D Tour](#-visual-interface--3d-tour)
-- [Core Capabilities](#-core-capabilities)
-- [Interactive 3D Architecture](#-interactive-3d-architecture)
-- [System Architecture & Data Flow](#-system-architecture--data-flow)
-- [Repository Layout](#-repository-layout)
-- [Local Development Quickstart](#-local-development-quickstart)
-- [Environment Variables](#-environment-variables)
-- [REST API Reference](#-rest-api-reference)
-- [Automated Verification & Test Suite](#-automated-verification--test-suite)
-- [Security & SSRF Guardrails](#-security--ssrf-guardrails)
-- [License & Author](#-license--author)
+VYORA AI is a full-stack platform for analysing video and audio. Instead of treating video only as audio to transcribe, it is designed to combine visual scene analysis, audio transcripts, on-screen text, and structured entities into chapters, summaries, and a question-and-answer interface.
 
----
+The original README describes the platform as powered by Google Gemini, FastAPI, Three.js, and React, with a dual-engine media player, a 3D timeline view, and source-grounded Q&A with clickable timestamp references.
 
-## 🌟 Overview
+## Features
 
-**VYORA AI** transforms long-form video and audio content into structured, interactive knowledge bases. Rather than treating video simply as speech-to-text audio, VYORA AI leverages **Google's official GenAI SDK (Gemini 3.8 Flash / 2.0 Flash)** to perform true **multimodal inspection**: analyzing visual scenes, extracted audio tracks, OCR on-screen text, speaker sentiment, and structured conceptual entities simultaneously.
+### Video and speech analysis
 
-All extracted intelligence is mapped into a dark, cinematic workstation featuring a **dual-engine media player** (HTML5 Range Streaming + YouTube IFrame API), **3D spatial timeline orbital nodes**, **source-grounded Q&A chat** with clickable `[MM:SS]` timestamp badges, and real-time state machine persistence.
+- Ingests MP4, WebM, MOV, AVI, MP3, WAV, and remote video streams, as described in the original README
+- Visual analysis, including slide changes, presentations, on-screen code and diagrams, and OCR text
+- Chapter segmentation with start and end timestamps and takeaways
+- Named entity and action-item extraction, as described in the original README
 
----
+### Media playback and timestamps
 
-## 📸 Visual Interface & 3D Tour
+- Local media playback with HTTP range streaming
+- Remote YouTube playback through the YouTube IFrame player, as described in the original README
+- Clickable timestamp references intended to seek to the relevant moment in the video
 
-| Cinematic Landing & 3D Core | Multimodal AI Workspace | Knowledge Hub & Project Library |
-| :---: | :---: | :---: |
-| <img src="screenshots/vyora_homepage.png" alt="Homepage" width="100%" /> | <img src="screenshots/vyora_workspace.png" alt="Workspace" width="100%" /> | <img src="screenshots/vyora_dashboard.png" alt="Dashboard" width="100%" /> |
-| *Three.js icosahedron core, orbital gimbal rings, and interactive scroll phases.* | *Dual-engine player, 3D curved timeline, chapter summaries & grounded Q&A.* | *Project library, telemetry analytics, search, bookmarks, and export.* |
+### Question answering
 
----
+- A question-and-answer interface grounded in the video's transcripts, visual descriptions, and OCR content
+- Answers are intended to include timestamp citations, so claims can be checked against the source material
 
-## ⚡ Core Capabilities
+### Model handling
 
-### 1. Multimodal Video & Speech Intelligence
-- Ingests MP4, WebM, MOV, AVI, MP3, WAV, and remote video streams.
-- Deep visual analysis: detects slide changes, presentations, on-screen code snippets, diagrams, and OCR text overlay.
-- Extracts comprehensive chapter segmentation with exact start/end timestamps and actionable takeaways.
-- Identifies named entities (people, technologies, organizations) and key action items with urgency flags.
+- The original README describes dynamic model discovery from the Google API, with a preferred model and automatic fallback to other Gemini models if the preferred model is unavailable
+- Retry handling for rate limits and upstream disruptions, and a model-discovery cache with manual invalidation, as described in the original README
 
-### 2. Dual-Engine Media Playback & Timestamp Synchronization
-- **Local Media**: Zero-latency HTML5 video and audio playback backed by FastAPI byte-range (`206 Partial Content`) streaming.
-- **Remote YouTube Videos**: Embedded YouTube IFrame Player synchronized bidirectionally via window `postMessage` protocol.
-- **Clickable Timestamp Citations**: Every generated chapter, transcript segment, note, bookmark, and Q&A answer includes formatted `[MM:SS]` badges that instantly seek the video to that exact millisecond.
+### Background pipeline
 
-### 3. Source-Grounded AI Q&A Engine (Zero Hallucination)
-- Context-injected retrieval-augmented conversational agent.
-- Answers user inquiries based exclusively on the video's transcripts, visual scene descriptions, and OCR content.
-- Enforces strict factual citations: every claim is tagged with clickable timestamp source references.
+- Asynchronous processing, decoupled from HTTP request timeouts
+- Job stages described in the original README: queued, uploading, extracting audio, transcribing, identifying chapters, finalizing, and completed
+- SQLite-backed job persistence, intended to survive server restarts
 
-### 4. Dynamic Gemini Model Discovery & Resilient Failover
-- Introspects models accessible to your Google API key in real-time via the Google Model Listing API.
-- Automatically locks to the state-of-the-art **`gemini-3.8-flash`**, gracefully cascading to **`gemini-2.0-flash`** or **`gemini-1.5-flash`** when needed.
-- Built-in exponential backoff retry algorithms for handling rate limits (HTTP 429) and upstream service disruptions (HTTP 503).
-- In-memory TTL caching with manual invalidation endpoints to eliminate redundant discovery latency.
+## System Architecture
 
-### 5. Durable Background Pipeline & State Machine
-- Asynchronous task processing decoupled from HTTP request timeouts.
-- State progression: `QUEUED` ➔ `UPLOADING` ➔ `EXTRACTING_AUDIO` ➔ `TRANSCRIBING` ➔ `IDENTIFYING_CHAPTERS` ➔ `FINALIZING` ➔ `COMPLETED`.
-- SQLite backed (`processing_jobs`), surviving server restarts and network interruptions without losing analysis jobs.
+The system described in the original README has four main parts:
 
----
+- **Frontend:** React with Vite and Three.js visualisations, including landing, dashboard, workspace, and library views
+- **Backend:** FastAPI with REST endpoints, SSRF validation, a background job engine, range streaming, and model discovery
+- **Storage:** SQLite for projects, jobs, notes, and bookmarks, plus a local disk cache for uploads
+- **Google GenAI:** Gemini models and the Gemini Files API for multimodal analysis
 
-## 🔮 Interactive 3D Architecture
+## Project Structure
 
-VYORA AI features four custom Three.js hardware-accelerated 3D visualizers:
+The structure below is a condensed summary of the layout described in the original README.
 
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│                      VYORA 3D VISUALIZATION SUITE                      │
-├──────────────────────────┬─────────────────────────────────────────────┤
-│ Component                │ Visual Behavior & Role                      │
-├──────────────────────────┼─────────────────────────────────────────────┤
-│ VyoraIntelligenceOrbit   │ Obsidian metallic icosahedron core with     │
-│                          │ concentric spinning gimbal rings and        │
-│                          │ responsive 2,000+ starfield particle swarm. │
-├──────────────────────────┼─────────────────────────────────────────────┤
-│ SpatialTimeline3D        │ Curved 3D orbital trajectory visualizing    │
-│                          │ luminous chapter nodes in the AI Workspace. │
-│                          │ Supports raycasting, hover tooltips, and    │
-│                          │ one-click video seek interaction.           │
-├──────────────────────────┼─────────────────────────────────────────────┤
-│ ProcessingCore3D         │ Dynamically shifts geometry, rotation speed,│
-│                          │ and particle density in real-time across    │
-│                          │ each pipeline extraction stage.             │
-├──────────────────────────┼─────────────────────────────────────────────┤
-│ KnowledgeMap3D           │ Interactive radial topology linking media   │
-│                          │ projects to chapter and concept satellites  │
-│                          │ in the project library.                     │
-└──────────────────────────┴─────────────────────────────────────────────┘
-```
-
----
-
-## 🏗️ System Architecture & Data Flow
-
-```mermaid
-flowchart TD
-    subgraph Client["Frontend Client (React 18/19 + Vite + Three.js)"]
-        UI["Landing / Dashboard / Workspace"]
-        Player["Dual-Engine Player (HTML5 / YouTube IFrame)"]
-        ThreeCanvas["Three.js 3D Visualizers"]
-        QAChat["Grounded Q&A Tab"]
-    end
-
-    subgraph Backend["Backend Server (FastAPI + Uvicorn)"]
-        API["FastAPI REST Endpoints"]
-        SSRF["SSRF Defense & URL Validator"]
-        JobEngine["Background Job State Machine"]
-        StreamEngine["HTTP Range Video Streamer"]
-        ModelDisc["Dynamic Gemini Discovery & TTL Cache"]
-    end
-
-    subgraph Storage["Persistence & Media Cache"]
-        DB[("SQLite Database\n(projects, jobs, notes, bookmarks)")]
-        DiskCache[("Local Disk Cache\n(/uploads, /data_cache)")]
-    end
-
-    subgraph GoogleAI["Google GenAI Cloud"]
-        GeminiAPI["Gemini 3.8 / 2.0 Flash Engine"]
-        FilesAPI["Gemini Multimodal Files API"]
-    end
-
-    UI -->|"Upload File / Remote URL"| API
-    API --> SSRF
-    API --> JobEngine
-    JobEngine -->|"Persist State"| DB
-    JobEngine -->|"Stage Local Media"| DiskCache
-    JobEngine -->|"Upload & Ingest Video"| FilesAPI
-    FilesAPI -->|"Multimodal Reasoning"| GeminiAPI
-    GeminiAPI -->|"Structured JSON Extraction"| JobEngine
-    JobEngine -->|"Save Analysis"| DB
-    
-    Player <-->|"Range Streaming (206)"| StreamEngine
-    StreamEngine --> DiskCache
-    
-    QAChat -->|"Inquire with Video Context"| API
-    API -->|"RAG Query + Prompt Injection"| GeminiAPI
-    GeminiAPI -->|"Citations & Answer"| QAChat
-    
-    API --> ModelDisc
-    ModelDisc <-->|"Model Verification"| GeminiAPI
-    ThreeCanvas <-->|"Display Pipeline Stage"| JobEngine
-```
-
----
-
-## 📁 Repository Layout
-
-```
+```text
 VYORA-AI/
 ├── backend/
 │   ├── app/
-│   │   ├── main.py                     # FastAPI routes, SPA serving & health checks
-│   │   ├── config.py                   # Environment config, directory paths & API keys
-│   │   ├── database.py                 # SQLite engine, migrations & demo seeding
+│   │   ├── main.py
+│   │   ├── config.py
+│   │   ├── database.py
 │   │   ├── models/
-│   │   │   └── schemas.py              # Pydantic schemas (Chapters, OCR, Entities, Q&A)
 │   │   └── services/
-│   │       ├── gemini_extractor.py     # Multimodal analysis engine via Google GenAI SDK
-│   │       ├── model_discovery_service.py # Dynamic model discovery, rating & TTL caching
-│   │       ├── url_ingestion_service.py   # SSRF defense, DNS preflight & YouTube parser
-│   │       ├── qa_service.py           # Grounded RAG with clickable citations
-│   │       ├── media_service.py        # HTTP Range video/audio streaming
-│   │       └── pipeline_service.py     # Background job scheduler & state machine
 │   ├── migrations/
-│   │   └── 001_initial_schema.sql      # SQLite tables for projects, jobs, notes
-│   ├── samples/                        # Pre-packaged demo media assets
-│   ├── tests/                          # Automated Pytest verification suite (9 suites)
-│   ├── requirements.txt                # Python backend dependencies
-│   ├── run.py                          # Local server launcher
-│   └── .env.example
+│   ├── samples/
+│   ├── tests/
+│   ├── requirements.txt
+│   └── run.py
 ├── frontend/
 │   ├── src/
 │   │   ├── components/
-│   │   │   ├── 3d/                     # Three.js 3D visualizers (Orbit, Timeline, Core, Map)
-│   │   │   ├── pages/                  # Landing, Dashboard, Import, Workspace, Library
-│   │   │   ├── VideoPlayer.tsx         # Dual-engine player (HTML5 + YouTube postMessage)
-│   │   │   ├── SettingsModal.tsx       # Live API key validator & model switcher
-│   │   │   ├── ExportModal.tsx         # JSON, Markdown, and PDF export dialog
-│   │   │   └── ModelStatusModal.tsx    # Live diagnostic monitor & latency charts
 │   │   ├── lib/
-│   │   │   ├── api.ts                  # Axios/fetch client, polling & model status
-│   │   │   └── types.ts                # TypeScript interfaces
-│   │   ├── App.tsx                     # Main application container & view router
-│   │   └── index.css                   # Obsidian dark aesthetic & Tailwind directives
+│   │   ├── App.tsx
+│   │   └── index.css
 │   ├── package.json
-│   ├── tailwind.config.js
-│   ├── tsconfig.json
 │   └── vite.config.ts
-├── screenshots/                        # High-resolution application screenshots
-├── ENVIRONMENT_VARIABLES.md            # Environment variable specifications
-├── DEPLOYMENT.md                       # Deployment guide
+├── ENVIRONMENT_VARIABLES.md
+├── DEPLOYMENT.md
 └── README.md
 ```
 
----
-
-## 🚀 Local Development Quickstart
+## Getting Started
 
 ### Prerequisites
-- **Python 3.10+** (Python 3.12 verified)
-- **Node.js 18+** & `npm`
-- **Google Gemini API Key** (Free tier available at [Google AI Studio](https://aistudio.google.com/app/apikey))
 
----
+- Python 3.10 or higher (Python 3.12 verified, as stated in the original README)
+- Node.js 18 or higher, and npm
+- A Google Gemini API key
 
-### Step 1: Clone the Repository
+### Backend setup
 
 ```bash
 git clone https://github.com/Kshaurya-07/Video-Media-Knowledge-Extractor.git Vyora-AI
-cd Vyora-AI
-```
-
----
-
-### Step 2: Backend Setup
-
-```bash
-cd backend
-
-# Create virtual environment
+cd Vyora-AI/backend
 python -m venv .venv
-
-# Activate virtual environment
-# Windows (PowerShell):
-.\.venv\Scripts\Activate.ps1
-# Linux/macOS:
 source .venv/bin/activate
-
-# Install dependencies
 pip install -r requirements.txt
-
-# Configure environment variables
 cp .env.example .env
-# Open .env and insert your GEMINI_API_KEY
-
-# Start backend server
 uvicorn app.main:app --reload --port 8000
 ```
 
-> 💡 **Swagger API Documentation:** Once the server is running, visit [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) for the interactive OpenAPI documentation.
+On Windows PowerShell, activate the virtual environment with `.\.venv\Scripts\Activate.ps1` instead of the `source` command above.
 
----
+Once the backend is running, interactive API documentation is available at http://127.0.0.1:8000/docs, as described in the original README.
 
-### Step 3: Frontend Setup
+### Frontend setup
 
-Open a new terminal window:
+In a second terminal:
 
 ```bash
 cd frontend
-
-# Install frontend dependencies
 npm install
-
-# Start Vite development server
 npm run dev
 ```
 
-> 🌐 **Access Application:** Open [http://localhost:5173](http://localhost:5173) in your browser.
+Open http://localhost:5173 in your browser, as described in the original README.
 
----
+## Environment Variables
 
-## ⚙️ Environment Variables
+For full specifications, see `ENVIRONMENT_VARIABLES.md` in the repository.
 
-For full specifications, consult [`ENVIRONMENT_VARIABLES.md`](ENVIRONMENT_VARIABLES.md).
+### Backend
 
-### Backend (`backend/.env`)
+| Variable | Required | Description |
+| --- | --- | --- |
+| `GEMINI_API_KEY` | Yes | Google Gemini API key for extraction and Q&A |
+| `GEMINI_MODEL` | No | Preferred Gemini model, with automatic fallback as described in the original README |
+| `MODEL_CACHE_TTL_SECONDS` | No | Model discovery cache TTL in seconds |
+| `PORT` | No | Local HTTP port for the backend server |
 
-| Variable | Required | Default | Description |
-| :--- | :---: | :--- | :--- |
-| `GEMINI_API_KEY` | **Yes** | *None* | Google Gemini API Key used for extraction & Q&A. |
-| `GEMINI_MODEL` | No | `gemini-3.8-flash` | Preferred Gemini model. Falls back automatically if unavailable. |
-| `MODEL_CACHE_TTL_SECONDS` | No | `3600` | Model discovery cache TTL (in seconds). |
-| `PORT` | No | `8000` | Local HTTP port for Uvicorn server. |
+### Frontend
 
-### Frontend (`frontend/.env`)
+| Variable | Required | Description |
+| --- | --- | --- |
+| `VITE_API_URL` | No | Base URL of the backend API service |
 
-| Variable | Required | Default | Description |
-| :--- | :---: | :--- | :--- |
-| `VITE_API_URL` | No | `http://localhost:8000` | Base URL of the backend API service. In production, points to deployed backend URL. |
+## API Reference
 
----
+### System and diagnostics
 
-## 📡 REST API Reference
+- `GET /health` or `GET /api/health` — Backend status and database connection
+- `GET /ready` or `GET /api/ready` — Readiness check
+- `GET /api/system/model-status` — Active model and discovery status
+- `GET /api/system/gemini-live-check` — Dry-run check against the Google GenAI API
+- `POST /api/system/model-cache/refresh` — Refresh the model discovery cache
+- `POST /api/verify-key` — Validate an API key
 
-The backend exposes a comprehensive set of RESTful endpoints:
+### Ingestion and jobs
 
-### System & Diagnostic Endpoints
-- `GET /health` or `GET /api/health` — Probes backend status, database connection, and uptime.
-- `GET /ready` or `GET /api/ready` — Readiness check verifying disk storage and environment readiness.
-- `GET /api/system/model-status` — Returns active Gemini model, discovery roster, and key health status.
-- `GET /api/system/gemini-live-check` — Performs an instantaneous dry-run ping against the Google GenAI API.
-- `POST /api/system/model-cache/refresh` — Flushes and rebuilds the model discovery cache.
-- `POST /api/verify-key` — Validates an API key provided in the request body.
+- `POST /api/upload` — Upload a local video or audio file
+- `POST /api/ingest/url` — Ingest a public YouTube URL or direct video stream, with SSRF validation
+- `POST /api/process/start` — Start an extraction job
+- `GET /api/jobs/{job_id}` — Poll job status and stage
 
-### Ingestion & Pipeline Endpoints
-- `POST /api/upload` — Validates and uploads a local video/audio file with duration inspection.
-- `POST /api/ingest/url` — Ingests a public YouTube URL or direct video stream with SSRF validation.
-- `POST /api/process/start` — Spawns an asynchronous background extraction job.
-- `GET /api/jobs/{job_id}` — Polls status, stage progression, percentage, and diagnostic messages for a job.
+### Knowledge and analytics
 
-### Knowledge & Analytics Endpoints
-- `GET /api/projects` — Lists all registered media projects.
-- `GET /api/projects/{project_id}` — Retrieves full metadata, chapters, OCR, and analysis for a project.
-- `DELETE /api/projects/{project_id}` — Deletes a project and its associated local files.
-- `GET /api/projects/{project_id}/search` — Full-text and keyword search across transcripts, OCR, and chapters.
-- `POST /api/chat` — Context-grounded Q&A against a processed media project.
-- `GET /api/knowledge-graph` — Generates a global 3D knowledge map topology connecting all projects and tags.
+- `GET /api/projects` — List media projects
+- `GET /api/projects/{project_id}` — Retrieve a project's metadata, chapters, OCR, and analysis
+- `DELETE /api/projects/{project_id}` — Delete a project and its local files
+- `GET /api/projects/{project_id}/search` — Search transcripts, OCR, and chapters
+- `POST /api/chat` — Question answering against a processed project
+- `GET /api/knowledge-graph` — Knowledge map connecting projects and tags
 
-### Streaming, Notes & Bookmarks
-- `GET /api/media/{file_id}` — Streams video/audio using HTTP Range `206 Partial Content`.
-- `GET /api/projects/{id}/notes` & `POST /api/projects/{id}/notes` — Reads and adds timestamped user notes.
-- `GET /api/projects/{id}/bookmarks` & `POST /api/projects/{id}/bookmarks` — Reads and adds timestamped bookmarks.
+### Streaming, notes, and bookmarks
 
----
+- `GET /api/media/{file_id}` — Stream video or audio with HTTP range support
+- `GET /api/projects/{id}/notes` and `POST /api/projects/{id}/notes` — Timestamped notes
+- `GET /api/projects/{id}/bookmarks` and `POST /api/projects/{id}/bookmarks` — Timestamped bookmarks
 
-## 🧪 Automated Verification & Test Suite
+## Testing
 
-VYORA AI includes an automated testing suite comprising **35 unit, integration, and regression tests** across 9 dedicated test modules:
+The original README describes a backend test suite of 35 tests across 9 modules, covering API endpoints, Gemini uploads, model discovery, URL ingestion, failure recovery, end-to-end pipeline behaviour, media formats, schema compatibility, and JSON repair. Those counts are as described in the original README and were not independently re-run for this rewrite.
 
 ```bash
-# Execute the complete backend test suite
 python -m pytest backend/tests -v
-```
-
-### Test Coverage Highlights
-
-| Test Suite | Purpose & Coverage |
-| :--- | :--- |
-| `test_api_endpoints.py` | Validates health probes, project CRUD, notes, bookmarks, and upload validations. |
-| `test_gemini_upload.py` | Tests Gemini GenAI SDK file uploads, timeout handling, and model fallbacks. |
-| `test_model_discovery.py` | Validates model rating, model discovery logic, and TTL cache invalidation. |
-| `test_url_ingestion.py` | Tests YouTube URL parsing, parameter scrubbing, and SSRF loopback IP rejection. |
-| `test_failure_recovery_scenarios.py` | Verifies graceful recovery from corrupt files, 503 errors, and interrupted jobs. |
-| `test_e2e_video_pipeline.py` | End-to-end integration test of video ingestion, background job processing, and output schemas. |
-| `test_media_formats.py` | Verifies MIME detection, magic byte validation, and range streaming across formats. |
-| `test_schema_compatibility.py` | Tests Pydantic model serialization, migration integrity, and backward compatibility. |
-| `test_json_repair.py` | Tests resilience against truncated or malformed JSON responses from LLM streams. |
-
-Frontend TypeScript verification and production build:
-```bash
 npm --prefix frontend run build
 ```
 
----
+## Security
 
-## 🛡️ Security & SSRF Guardrails
+Security measures described in the original README include:
 
-VYORA AI implements strict security policies to protect both server infrastructure and end-users:
+1. The Gemini API key is kept server-side and is not injected into client bundles.
+2. Remote URLs undergo DNS pre-flight checks, blocking loopback addresses, private subnets, and cloud metadata endpoints.
+3. Remote downloads enforce a 500 MB streaming limit, as described in the original README.
+4. Uploaded media is checked by MIME type and file headers.
 
-1. **Client Isolation of Secrets**: The `GEMINI_API_KEY` is maintained **strictly server-side**. Client applications interact only through secure backend proxy routes; keys are never injected into client JS bundles.
-2. **SSRF Defense with DNS Pre-flight**: All remote URLs undergo pre-flight DNS resolution before downloading:
-   - Blocks loopback addresses (`127.0.0.1`, `::1`).
-   - Blocks RFC 1918 private subnets (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`).
-   - Blocks cloud metadata endpoints (`169.254.169.254`).
-3. **Hard Download Caps**: Remote downloads enforce a strict **500 MB streaming limit**, aborting downloads that exceed capacity to prevent denial-of-service.
-4. **MIME-Type & Magic Byte Validation**: Uploaded media is inspected via file headers to prevent malicious executable masquerading.
+## Contributing
 
----
+Issues, suggestions, and pull requests are welcome. Please keep API keys and other secrets out of pull requests and test fixtures.
 
-## 📄 License & Author
+## License
 
-This project is open-source under the **[MIT License](LICENSE)**.
+This project is licensed under the MIT License. See the LICENSE file in the repository for details.
 
-Designed and developed with ❤️ by **[Kumar Shaurya](https://github.com/Kshaurya-07)**.
-*Contributions, suggestions, and feedback are always welcome! Feel free to open an issue or pull request.*
+## Author
+
+Kumar Shaurya — https://github.com/Kshaurya-07
